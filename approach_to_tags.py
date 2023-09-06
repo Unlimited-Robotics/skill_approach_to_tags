@@ -11,6 +11,8 @@ from raya.controllers import CVController
 from raya.skills import RayaFSMSkill
 
 from .constants import *
+import threading
+
 
 
 class SkillApproachToTags(RayaFSMSkill):
@@ -70,7 +72,7 @@ class SkillApproachToTags(RayaFSMSkill):
         self.step_task = None
 
         self.motion:MotionController = await self.get_controller('motion')
-        self.cv:CVController = await self.enable_controller('cv')
+        self.cv:CVController = await self.get_controller('cv')
         model_params = {
                 'families' : 'tag36h11',
                 'nthreads' : 4,
@@ -80,11 +82,15 @@ class SkillApproachToTags(RayaFSMSkill):
                 'refine_edges' : 1,
                 'tag_size' : self.setup_args['tags_size'],
             }
-        self.predictor = await self.cv.enable_model(
-                name='apriltags', 
-                source=self.setup_args['working_camera'],
-                model_params = model_params
-            )
+        self.predictors={}
+        self.mutex_cb_detections= threading.Lock()
+        for camera in self.setup_args['working_cameras']:
+            self.predictors[camera] = await self.cv.enable_model(
+                    name='apriltags', 
+                    source=camera,
+                    model_params = model_params
+                )
+        
 
 
     async def finish(self):
@@ -96,7 +102,9 @@ class SkillApproachToTags(RayaFSMSkill):
 
     def setup_variables(self):
         self.handler_names = HANDLER_NAMES
-        self.handler_name = type(self.predictor).__name__
+        for camera in self.predictors:
+            self.handler_name = type(self.predictors[camera]).__name__
+            break
         self.approach = self.handler_names[self.handler_name]
         
         #flags
@@ -117,10 +125,11 @@ class SkillApproachToTags(RayaFSMSkill):
 
         self.additional_distance= self.setup_args['min_correction_distance']
 
-        self.predictor.set_detections_callback(
-                callback=self._callback_predictions,
-                as_dict=True,
-                call_without_detections=True
+        for camera in self.predictors:
+            self.predictors[camera].set_detections_callback(
+                    callback=self._callback_predictions(camera),
+                    as_dict=True,
+                    call_without_detections=True
             )
 
     def validate_arguments(self):
@@ -259,16 +268,17 @@ class SkillApproachToTags(RayaFSMSkill):
                 math.degrees(angle_intersection_goal))
     
     
-    def _callback_predictions(self, predictions, timestamp):
-        if predictions:
-            __predictions = predictions
-            __predictions['timestamp'] = timestamp[0]+timestamp[1]/1e9
-            if self.waiting_detection:
-                self.__predictions_queue.put(predictions)
-                if self.__predictions_queue._qsize() == \
-                        self.setup_args['tags_to_average'] or \
-                        not self.wait_until_complete_queue:                
-                    self.__update_predictions()
+    def _callback_predictions(self, camera):
+        def _callback_predictions_final(predictions, timestamp):
+            if predictions and self.waiting_detection:
+                with self.mutex_cb_detections:
+                    # self.log.debug(f'camera {camera}')
+                    self.__predictions_queue.put(predictions)
+                    if self.__predictions_queue._qsize() == \
+                            self.setup_args['tags_to_average'] or \
+                            not self.wait_until_complete_queue:                
+                        self.__update_predictions()
+        return _callback_predictions_final
                 
 
     def __update_predictions(self ):
