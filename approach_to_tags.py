@@ -55,12 +55,11 @@ class SkillApproachToTags(RayaFSMSkill):
             'log_transitions':True,
         }
 
-    REQUIRED_EXECUTION_ARGS = []
+    REQUIRED_EXECUTE_ARGS = []
 
-    DEFAULT_EXECUTION_ARGS = {
+    DEFAULT_EXECUTE_ARGS = {
             'distance_to_goal': 0.5,
             'angle_to_goal': 0.0,
-            'intersection_threshold': 0.2,
             'angular_velocity': 10,
             'linear_velocity': 0.1,
             'min_correction_distance': 0.5,
@@ -131,7 +130,7 @@ class SkillApproachToTags(RayaFSMSkill):
         self.__predictions_queue = queue.Queue()
 
         self.additional_distance = \
-                self.execution_args['min_correction_distance']
+                self.execute_args['min_correction_distance']
 
         for camera in self.predictors:
             self.predictors[camera].set_detections_callback(
@@ -142,8 +141,8 @@ class SkillApproachToTags(RayaFSMSkill):
 
     def validate_arguments(self):
         self.setup_variables()
-        if self.setup_args['angle_to_goal'] > 180.0 \
-            or self.setup_args['angle_to_goal'] < -180.0:
+        if self.execute_args['angle_to_goal'] > 180.0 \
+            or self.execute_args['angle_to_goal'] < -180.0:
             self.abort(*ERROR_INVALID_ANGLE)
         if not self.handler_name in HANDLER_NAMES:
             self.abort(*ERROR_INVALID_PREDICTOR)
@@ -159,16 +158,16 @@ class SkillApproachToTags(RayaFSMSkill):
                 f'rotating {self.angular_sign* self.angle_robot_intersection} '
                 f'linear {self.linear_distance}'
             )
-        if abs(self.projected_error_y) > self.setup_args['max_y_error_allowed']:
+        if abs(self.projected_error_y) > self.execute_args['max_y_error_allowed']:
             self.log.debug('rotating because projected error exceed limit')
             await self.motion.rotate(
                     angle=abs(self.angle_robot_intersection), 
-                    angular_speed=self.setup_args['angular_velocity'] * self.angular_sign, 
+                    angular_speed=self.execute_args['angular_velocity'] * self.angular_sign, 
                     wait=True,
                 )
         await self.motion.move_linear(
                 distance=self.linear_distance, 
-                x_velocity=self.setup_args['linear_velocity'], 
+                x_velocity=self.execute_args['linear_velocity'], 
                 wait=True,
             )
     
@@ -192,24 +191,29 @@ class SkillApproachToTags(RayaFSMSkill):
         distance_x, distance_y = self.get_relative_coords(
             self.correct_detection[:2], robot_position[:2], 
             self.correct_detection[2])
-        distance_x = abs(distance_x - self.setup_args['distance_to_goal'])
+        ini_target_distance = self.get_euclidean_distance(
+            robot_position[:2], self.correct_detection)
+        self.log.debug(f"Initial distance euclidean {ini_target_distance} "
+                       f"x: {distance_x} y: {distance_y}")
+        distance_x = abs(distance_x - self.execute_args['distance_to_goal'])
+        
+        
         if abs(distance_x) <= X_THRESHOLD_ERROR:
             x_final = True                         
         if abs(distance_y) <= Y_THRESHOLD_ERROR:
             y_final = True
         if x_final == True and y_final == True:  
             return True 
-        ini_target_distance = self.get_euclidean_distance(
-            robot_position[:2], self.correct_detection)
-        if ini_target_distance < (self.setup_args['distance_to_goal'] + 
-                                  self.execution_args['min_correction_distance']):
+        
+        if ini_target_distance < (self.execute_args['distance_to_goal'] + 
+                                  self.execute_args['min_correction_distance']):
             self.log.debug("ERROR_TOO_CLOSE_TO_TARGET")
             self.abort(
                     ERROR_TOO_CLOSE_TO_TARGET,
                     f'Robot is too close to the target. It is '
                     f'{ini_target_distance:.2f}, and it must be at least the '
-                    f'distance to goal ({self.setup_args["distance_to_goal"]:.2f}) '
-                    f'+ MIN_CORRECTION_DISTANCE ({MIN_CORRECTION_DISTANCE})'
+                    f'distance to goal ({self.execute_args["distance_to_goal"]:.2f}) '
+                    f'+ MIN_CORRECTION_DISTANCE ({self.execute_args["min_correction_distance"]})'
                 )
             
 
@@ -236,7 +240,7 @@ class SkillApproachToTags(RayaFSMSkill):
         
         error_y = inverse_translation[1] + np.sign(inverse_rotation[2]) * \
         np.tan(np.pi-abs(inverse_rotation[2]))*(inverse_translation[0] -
-        self.setup_args['distance_to_goal'])
+        self.execute_args['distance_to_goal'])
         self.log.debug(f"projected y error {error_y}")
         return error_y
 
@@ -244,7 +248,7 @@ class SkillApproachToTags(RayaFSMSkill):
         line_2 = self.__get_proyected_point(
             self.correct_detection[0], self.correct_detection[1], 
             self.correct_detection[2], 
-            self.setup_args['distance_to_goal']+self.additional_distance)
+            self.execute_args['distance_to_goal']+self.additional_distance)
         robot_point= [0,0,0]
         p1 = np.array(self.correct_detection[:2])
         p2 = np.array(line_2)
@@ -283,7 +287,7 @@ class SkillApproachToTags(RayaFSMSkill):
                     # self.log.debug(f'camera {camera}')
                     self.__predictions_queue.put(predictions)
                     if self.__predictions_queue._qsize() == \
-                            self.setup_args['tags_to_average'] or \
+                            self.execute_args['tags_to_average'] or \
                             not self.wait_until_complete_queue:                
                         self.__update_predictions()
         return _callback_predictions_final
@@ -302,7 +306,7 @@ class SkillApproachToTags(RayaFSMSkill):
             predicts.append(goal)
         self.robot_position=()
 
-        if (len(predicts) == self.setup_args['tags_to_average'] or 
+        if (len(predicts) == self.execute_args['tags_to_average'] or 
             not self.wait_until_complete_queue):
             correct_detection=self.__process_multiple_detections(predicts)
             if correct_detection:
@@ -336,7 +340,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 goal = [pred['pose_base_link'].pose.position.x,
                                 pred['pose_base_link'].pose.position.y,
                                 angle+
-                                self.setup_args['angle_to_goal']]
+                                self.execute_args['angle_to_goal']]
                 if list_size == 1:
                     return goal
                 predicts_final.append((goal, goal[2]))
@@ -377,7 +381,7 @@ class SkillApproachToTags(RayaFSMSkill):
         angle5 = np.sign(angle4)*(90-abs(angle4))
         final_point = ((pt1[0] + pt2[0]) / 2, (pt1[1] + pt2[1]) / 2, 
                        np.sign(angle5)*(180-abs(angle5))+
-                                self.setup_args['angle_to_goal'])
+                                self.execute_args['angle_to_goal'])
         return final_point  
     
 
@@ -467,7 +471,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def enter_ROTATE_TO_APRILTAGS(self):
         self.log.debug(f'rotating {self.angle_intersection_goal}')
-        ang_vel=(self.setup_args['angular_velocity'] *
+        ang_vel=(self.execute_args['angular_velocity'] *
                  np.sign(self.angle_intersection_goal))
         await self.motion.rotate(
                 angle=abs(self.angle_intersection_goal), 
@@ -483,8 +487,8 @@ class SkillApproachToTags(RayaFSMSkill):
     async def enter_STEP_N(self):
         self.additional_distance = 0.0
         self.planning_calculations()
-        self.linear_distance = self.setup_args['step_size']
-        if self.distance<=self.setup_args['step_size']:
+        self.linear_distance = self.execute_args['step_size']
+        if self.distance<=self.execute_args['step_size']:
             self.is_final_step=True
             self.linear_distance=self.distance
         self.log.debug(f"distance: {self.distance} ")
@@ -494,8 +498,8 @@ class SkillApproachToTags(RayaFSMSkill):
     async def enter_CENTER_TO_TARGET(self):
         self.planning_calculations()
         if abs(self.angle_robot_goal) > \
-            self.setup_args['max_angle_error_allowed']:
-            ang_vel=(self.setup_args['angular_velocity'] *
+            self.execute_args['max_angle_error_allowed']:
+            ang_vel=(self.execute_args['angular_velocity'] *
                     np.sign(self.angle_robot_goal))
             await self.motion.rotate(
                     angle=abs(self.angle_robot_goal), 
@@ -513,14 +517,14 @@ class SkillApproachToTags(RayaFSMSkill):
         distance_x, distance_y = self.get_relative_coords(
             self.correct_detection[:2], [0,0], 
             self.correct_detection[2])
-        linear_distance = distance_x - self.setup_args['distance_to_goal']
+        linear_distance = distance_x - self.execute_args['distance_to_goal']
         self.log.debug(f"linear distance to correct {linear_distance}"
                            f" error y {distance_y} angle_tag "
                            f"{self.correct_detection[2]}")
-        if abs(linear_distance) > self.setup_args['max_x_error_allowed']:
+        if abs(linear_distance) > self.execute_args['max_x_error_allowed']:
             await self.motion.move_linear(distance=abs(linear_distance), 
                                             x_velocity=(
-            self.setup_args['linear_velocity']*np.sign(linear_distance)), 
+            self.execute_args['linear_velocity']*np.sign(linear_distance)), 
                                             wait=False)
 
 
