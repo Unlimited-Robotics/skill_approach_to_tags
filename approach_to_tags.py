@@ -17,10 +17,7 @@ import threading
 
 class SkillApproachToTags(RayaFSMSkill):
 
-    ### FSM CONSTANTS ###
-
-    # ENABLEEEEEE
-    TICK_PERIOD = 0.1
+    ### FSM ###
 
     STATES = [
             'READ_APRILTAG',
@@ -47,23 +44,32 @@ class SkillApproachToTags(RayaFSMSkill):
         'READ_APRILTAGS_FINAL': (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
     }
 
-    DEFAULT_SETUP_ARGS = {
-        'log_transitions':True,
-        'distance_to_goal': 0.5,
-        'angle_to_goal': 0.0,
-        'intersection_threshold': 0.2,
-        'angular_velocity': 10,
-        'linear_velocity': 0.1,
-        'min_correction_distance': MIN_CORRECTION_DISTANCE,
-        'save_trajectory': False,
-        'step_size': 0.2,
-        'tags_to_average': 6,
-        'max_x_error_allowed': 0.02,
-        'max_y_error_allowed': 0.05,
-        'max_angle_error_allowed': 5.0,
-    }
+    ### SKILL ###
 
-    DEFAULT_EXECUTION_ARGS = {}
+    REQUIRED_SETUP_ARGS = [
+            'working_cameras',
+            'tags_size',
+        ]
+
+    DEFAULT_SETUP_ARGS = {
+            'log_transitions':True,
+        }
+
+    REQUIRED_EXECUTION_ARGS = []
+
+    DEFAULT_EXECUTION_ARGS = {
+            'distance_to_goal': 0.5,
+            'angle_to_goal': 0.0,
+            'intersection_threshold': 0.2,
+            'angular_velocity': 10,
+            'linear_velocity': 0.1,
+            'min_correction_distance': 0.5,
+            'step_size': 0.2,
+            'tags_to_average': 6,
+            'max_x_error_allowed': 0.02,
+            'max_y_error_allowed': 0.05,
+            'max_angle_error_allowed': 5.0,
+        }
 
     ### SKILL METHODS ###
 
@@ -94,6 +100,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
 
     async def finish(self):
+        # Disable models
         pass
 
 
@@ -121,9 +128,10 @@ class SkillApproachToTags(RayaFSMSkill):
         self.angle_robot_goal = None
         self.linear_distance = None
         
-        self.__predictions_queue= queue.Queue()
+        self.__predictions_queue = queue.Queue()
 
-        self.additional_distance= self.setup_args['min_correction_distance']
+        self.additional_distance = \
+                self.execution_args['min_correction_distance']
 
         for camera in self.predictors:
             self.predictors[camera].set_detections_callback(
@@ -194,7 +202,7 @@ class SkillApproachToTags(RayaFSMSkill):
         ini_target_distance = self.get_euclidean_distance(
             robot_position[:2], self.correct_detection)
         if ini_target_distance < (self.setup_args['distance_to_goal'] + 
-                                  self.setup_args['min_correction_distance']):
+                                  self.execution_args['min_correction_distance']):
             self.log.debug("ERROR_TOO_CLOSE_TO_TARGET")
             self.abort(
                     ERROR_TOO_CLOSE_TO_TARGET,
