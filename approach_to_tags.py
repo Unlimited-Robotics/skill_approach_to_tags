@@ -49,6 +49,7 @@ class SkillApproachToTags(RayaFSMSkill):
     REQUIRED_SETUP_ARGS = [
             'working_cameras',
             'tags_size',
+            'identifier'
         ]
 
     DEFAULT_SETUP_ARGS = {
