@@ -17,34 +17,6 @@ import threading
 
 class SkillApproachToTags(RayaFSMSkill):
 
-    ### FSM ###
-
-    STATES = [
-            'READ_APRILTAG',
-            'GO_TO_INTERSECTION',
-            'READ_APRILTAG_2',
-            'ROTATE_TO_APRILTAGS',
-            'ROTATE_UNTIL_DETECTIONS',
-            'STEP_N',
-            'READ_APRILTAGS_N',
-            'CENTER_TO_TARGET',
-            'READ_APRILTAGS_FINAL',
-            'MOVE_LINEAR_FINAL',
-            'END'
-        ]
-
-    INITIAL_STATE = 'READ_APRILTAG'
-
-    END_STATES = [
-        'END',
-    ]
-
-    STATES_TIMEOUTS = {
-        'READ_APRILTAG' :       (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
-        'READ_APRILTAGS_N' :    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
-        'READ_APRILTAGS_FINAL': (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
-    }
-
     ### SKILL ###
 
     REQUIRED_SETUP_ARGS = [
@@ -72,6 +44,34 @@ class SkillApproachToTags(RayaFSMSkill):
             'max_angle_error_allowed': 5.0,
             'allowed_motion_tries': 10,
         }
+
+    ### FSM ###
+
+    STATES = [
+            'READ_APRILTAG',
+            'GO_TO_INTERSECTION',
+            'READ_APRILTAG_2',
+            'ROTATE_TO_APRILTAGS',
+            'ROTATE_UNTIL_DETECTIONS',
+            'STEP_N',
+            'READ_APRILTAGS_N',
+            'CENTER_TO_TARGET',
+            'READ_APRILTAGS_FINAL',
+            'MOVE_LINEAR_FINAL',
+            'END'
+        ]
+
+    INITIAL_STATE = 'READ_APRILTAG'
+
+    END_STATES = [
+        'END',
+    ]
+
+    STATES_TIMEOUTS = {
+        'READ_APRILTAG' :       (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+        'READ_APRILTAGS_N' :    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+        'READ_APRILTAGS_FINAL': (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+    }
 
     ### SKILL METHODS ###
 
