@@ -1,0 +1,16 @@
+{
+    "app-id": "approach_to_apriltags",
+    "app-name": null,
+    "simulation": true,
+    "dev-mode": true,
+    "robot-connection": {
+        "robot-id": "",
+        "ip-address": "",
+        "dds-domain": 0,
+        "robot-serial": "SN-08"
+    },
+    "logging": {
+        "file_enabled": true,
+        "folder": "log"
+    }
+}
