@@ -19,22 +19,25 @@ class RayaApplication(RayaApplicationBase):
                         'tags_size': self.tags_size,
                     },
             )
-        
+
 
     async def main(self):
-        await self.skill_apr2tags.execute_main(execute_args = {
-                    'distance_to_goal': self.target_distance
-                },
-                callback_feedback=self.cb_feedback)
+        execute_result = await self.skill_apr2tags.execute_main(
+                execute_args={
+                        'distance_to_goal': self.target_distance
+                    },
+                callback_feedback=self.cb_feedback
+            )
+        self.log.debug(execute_result)
 
 
     async def finish(self):
-        finish_result= await self.skill_apr2tags.execute_finish()
-        self.log.debug(finish_result)
+        await self.skill_apr2tags.execute_finish()
 
 
     async def cb_feedback(self, feedback):
         self.log.debug(feedback)
+
 
     def get_arguments(self):
         
@@ -47,7 +50,7 @@ class RayaApplication(RayaApplicationBase):
         self.cameras = self.get_argument(
                 '-c', '--cameras-name', 
                 type=str, 
-                list= True, 
+                list=True, 
                 required=True,
                 help='name of cameras to use'
             )   
@@ -75,9 +78,3 @@ class RayaApplication(RayaApplicationBase):
             self.identifier = literal_eval(self.identifier)
         except:
             pass
-
-
-
-
-
-

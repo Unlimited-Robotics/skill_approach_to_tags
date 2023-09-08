@@ -3,15 +3,15 @@ import queue
 import time
 import asyncio
 import numpy as np
+from functools import partial
 import tf_transformations as tftr
 from transforms3d import euler
 
 from raya.controllers import MotionController
 from raya.controllers import CVController
 from raya.skills import RayaFSMSkill
-from raya.exceptions import RayaException, RayaMotionObstacleDetected
+from raya.exceptions import RayaMotionObstacleDetected
 from .constants import *
-import threading
 
 
 
@@ -26,7 +26,7 @@ class SkillApproachToTags(RayaFSMSkill):
         ]
 
     DEFAULT_SETUP_ARGS = {
-            'log_transitions':True,
+            'fsm_log_transitions':True,
         }
 
     REQUIRED_EXECUTE_ARGS = []
@@ -56,22 +56,28 @@ class SkillApproachToTags(RayaFSMSkill):
             'STEP_N',
             'READ_APRILTAGS_N',
             'CENTER_TO_TARGET',
-            'READ_APRILTAGS_FINAL',
+            'READ_APRILTAGS_FINAL_CORRECTION',
             'MOVE_LINEAR_FINAL',
+            'READ_APRILTAGS_FINAL',
             'END'
         ]
 
     INITIAL_STATE = 'READ_APRILTAG'
 
     END_STATES = [
-        'END',
-    ]
+            'END',
+        ]
 
     STATES_TIMEOUTS = {
-        'READ_APRILTAG' :       (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
-        'READ_APRILTAGS_N' :    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
-        'READ_APRILTAGS_FINAL': (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
-    }
+            'READ_APRILTAG' :      
+                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+            'READ_APRILTAGS_N' :   
+                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+            'READ_APRILTAGS_FINAL_CORRECTION': 
+                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+            'READ_APRILTAGS_FINAL': 
+                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+        }
 
     ### SKILL METHODS ###
 
@@ -91,7 +97,6 @@ class SkillApproachToTags(RayaFSMSkill):
                 'tag_size' : self.setup_args['tags_size'],
             }
         self.predictors={}
-        self.mutex_cb_detections= threading.Lock()
         for camera in self.setup_args['working_cameras']:
             self.predictors[camera] = await self.cv.enable_model(
                     name='apriltags', 
@@ -103,7 +108,6 @@ class SkillApproachToTags(RayaFSMSkill):
     async def finish(self):
         for camera in self.setup_args['working_cameras']:
             await self.cv.disable_model(model_obj=self.predictors[camera])
-        return self.final_error
 
 
     ### HELPERS ###
@@ -123,6 +127,7 @@ class SkillApproachToTags(RayaFSMSkill):
         self.is_final_step = False
 
         #calculations
+        self.detections_cameras = set()
         self.correct_detection = None
         self.angle_intersection_goal = None
         self.angle_robot_intersection = None
@@ -138,7 +143,10 @@ class SkillApproachToTags(RayaFSMSkill):
 
         for camera in self.predictors:
             self.predictors[camera].set_detections_callback(
-                    callback=self._callback_predictions(camera),
+                    callback=partial(
+                            self._callback_predictions,
+                            camera,
+                        ),
                     as_dict=True,
                     call_without_detections=True
             )
@@ -160,8 +168,9 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def rotate_and_move_linear(self):
         await self.send_feedback({
-            'rotating': self.angular_sign* self.angle_robot_intersection,
-            'linear': self.linear_distance})
+                'rotation': self.angular_sign* self.angle_robot_intersection,
+                'linear': self.linear_distance
+            })
         if abs(self.projected_error_y) > self.execute_args['max_y_error_allowed']:
             await self.motion.rotate(
                     angle=abs(self.angle_robot_intersection), 
@@ -180,6 +189,7 @@ class SkillApproachToTags(RayaFSMSkill):
         self.waiting_detection = True
         self.wait_until_complete_queue = wait_complete_queue
         self.correct_detection = None
+        self.detections_cameras = set()
 
 
     def stop_detections(self):
@@ -196,9 +206,12 @@ class SkillApproachToTags(RayaFSMSkill):
             self.correct_detection[2])
         ini_target_distance = self.get_euclidean_distance(
             robot_position[:2], self.correct_detection)
-        await self.send_feedback({'initial_euclidean_distance': ini_target_distance,
-                            'initial error x' : distance_x,
-                            'initial error y' : distance_y})
+        await self.send_feedback({
+                'detected_cameras': self.detections_cameras,
+                'initial_euclidean_distance': ini_target_distance,
+                'initial_error_x' : distance_x,
+                'initial_error_y' : distance_y
+            })
         distance_x = abs(distance_x - self.execute_args['distance_to_goal'])
         
         if abs(distance_x) <= X_THRESHOLD_ERROR:
@@ -230,6 +243,7 @@ class SkillApproachToTags(RayaFSMSkill):
             )
         self.projected_error_y = await self.get_error_projection_y()
         
+
     async def get_error_projection_y(self):
         original_translation = (self.correct_detection[0], 
                                 self.correct_detection[1], 
@@ -282,17 +296,14 @@ class SkillApproachToTags(RayaFSMSkill):
                 math.degrees(angle_intersection_goal))
     
     
-    def _callback_predictions(self, camera):
-        def _callback_predictions_final(predictions, timestamp):
-            if predictions and self.waiting_detection:
-                with self.mutex_cb_detections:
-                    # self.log.debug(f'camera {camera}')
-                    self.__predictions_queue.put(predictions)
-                    if self.__predictions_queue._qsize() == \
-                            self.execute_args['tags_to_average'] or \
-                            not self.wait_until_complete_queue:                
-                        self.__update_predictions()
-        return _callback_predictions_final
+    def _callback_predictions(self, camera, predictions, timestamp):
+        if predictions and self.waiting_detection:
+            self.detections_cameras.add(camera)
+            self.__predictions_queue.put(predictions)
+            if self.__predictions_queue._qsize() == \
+                    self.execute_args['tags_to_average'] or \
+                    not self.wait_until_complete_queue:                
+                self.__update_predictions()
                 
 
     def __update_predictions(self ):
@@ -472,12 +483,10 @@ class SkillApproachToTags(RayaFSMSkill):
         
 
     async def enter_ROTATE_TO_APRILTAGS(self):
-        await self.send_feedback({'rotating':self.angle_intersection_goal})
-        ang_vel=(self.execute_args['angular_velocity'] *
-                 np.sign(self.angle_intersection_goal))
+        await self.send_feedback({'rotation':self.angle_intersection_goal})
         await self.motion.rotate(
-                angle=abs(self.angle_intersection_goal), 
-                angular_speed=ang_vel, 
+                angle=self.angle_intersection_goal, 
+                angular_speed=self.execute_args['angular_velocity'], 
                 wait=False
             )
     
@@ -504,24 +513,29 @@ class SkillApproachToTags(RayaFSMSkill):
         if self.distance<=self.execute_args['step_size']:
             self.is_final_step=True
             self.linear_distance=self.distance
-        await self.send_feedback({"distance to target": self.distance})
+        await self.send_feedback({
+                'detected_cameras': self.detections_cameras,
+                'distance_to_target': self.distance,
+            })
         self.step_task = asyncio.create_task(self.rotate_and_move_linear())
 
 
     async def enter_CENTER_TO_TARGET(self):
         await self.planning_calculations()
+        await self.send_feedback({
+                'detected_cameras': self.detections_cameras,
+                'final_rotation': self.angle_robot_goal,
+            })
         if abs(self.angle_robot_goal) > \
-            self.execute_args['max_angle_error_allowed']:
-            ang_vel=(self.execute_args['angular_velocity'] *
-                    np.sign(self.angle_robot_goal))
+                self.execute_args['max_angle_error_allowed']:
             await self.motion.rotate(
-                    angle=abs(self.angle_robot_goal), 
-                    angular_speed=ang_vel, 
+                    angle=self.angle_robot_goal, 
+                    angular_speed=self.execute_args['angular_velocity'], 
                     wait=False
                 )
     
 
-    async def enter_READ_APRILTAGS_FINAL(self):
+    async def enter_READ_APRILTAGS_FINAL_CORRECTION(self):
         self.start_detections()
         
     
@@ -531,14 +545,20 @@ class SkillApproachToTags(RayaFSMSkill):
             self.correct_detection[:2], [0,0], 
             self.correct_detection[2])
         linear_distance = distance_x - self.execute_args['distance_to_goal']
-        self.final_error={"linear distance to correct": linear_distance,
-                           "error y": distance_y ,
-                           "angle_tag ":self.correct_detection[2]}
+        await self.send_feedback({
+                'detected_cameras': self.detections_cameras,
+                "final_linear": linear_distance,
+            })
         if abs(linear_distance) > self.execute_args['max_x_error_allowed']:
-            await self.motion.move_linear(distance=abs(linear_distance), 
-                                            x_velocity=(
-            self.execute_args['linear_velocity']*np.sign(linear_distance)), 
-                                            wait=False)
+            await self.motion.move_linear(
+                    distance = linear_distance, 
+                    x_velocity = self.execute_args['linear_velocity'], 
+                    wait=False,
+                )
+            
+
+    async def enter_READ_APRILTAGS_FINAL(self):
+        self.start_detections()
 
 
     ### TRANSITIONS ###
@@ -643,10 +663,10 @@ class SkillApproachToTags(RayaFSMSkill):
                     raise e
                 self.set_state('READ_APRILTAGS_N')
             if is_motion_ok:
-                self.set_state('READ_APRILTAGS_FINAL')
+                self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
 
     
-    async def transition_from_READ_APRILTAGS_FINAL(self):
+    async def transition_from_READ_APRILTAGS_FINAL_CORRECTION(self):
         if self.is_there_detection:
             self.set_state('MOVE_LINEAR_FINAL')
 
@@ -661,6 +681,26 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.tries+=1 
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
-                self.set_state('READ_APRILTAGS_FINAL')
+                self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
             if is_motion_ok:
-                self.set_state('END')
+                self.set_state('READ_APRILTAGS_FINAL')
+
+
+    async def transition_from_READ_APRILTAGS_FINAL(self):
+        if self.is_there_detection:
+            await self.planning_calculations()
+            distance_x, distance_y = self.get_relative_coords(
+                    self.correct_detection[:2], [0,0], 
+                    self.correct_detection[2]
+                )
+            error_x = distance_x - self.execute_args['distance_to_goal']
+            error_angle = self.correct_detection[2] - 180.0
+            if error_angle < -180.0: error_angle += 360.0
+            elif error_angle > 180.0: error_angle -= 360.0
+            self.main_result = {
+                    'detected_cameras': self.detections_cameras,
+                    "final_error_x": error_x,
+                    "final_error_y": distance_y,
+                    "final_error_angle": error_angle,
+                }
+            self.set_state('END')
