@@ -558,10 +558,11 @@ class SkillApproachToTags(RayaFSMSkill):
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 self.tries+=1 
+                if self.tries >= self.execute_args['allowed_motion_tries']:
+                    raise e
                 self.set_state('ROTATE_UNTIL_DETECTIONS')
 
             if is_motion_ok:
-                self.tries=0 
                 self.set_state('READ_APRILTAG_2')
 
 
@@ -582,9 +583,10 @@ class SkillApproachToTags(RayaFSMSkill):
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 self.tries+=1 
+                if self.tries >= self.execute_args['allowed_motion_tries']:
+                    raise e
                 self.set_state('ROTATE_UNTIL_DETECTIONS')
             if is_motion_ok:
-                self.tries=0 
                 self.set_state('READ_APRILTAGS_N')
     
 
@@ -601,7 +603,6 @@ class SkillApproachToTags(RayaFSMSkill):
                 
             if is_motion_ok and self.is_there_detection:
                 self.set_state('READ_APRILTAG')
-                self.tries=0
             else:
                 await self.enter_ROTATE_UNTIL_DETECTIONS()
                 
@@ -618,8 +619,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 self.is_final_step = False
-            if is_motion_ok :
-                self.tries=0 
+
             self.set_state('READ_APRILTAGS_N')
 
 
@@ -643,7 +643,6 @@ class SkillApproachToTags(RayaFSMSkill):
                     raise e
                 self.set_state('READ_APRILTAGS_N')
             if is_motion_ok:
-                self.tries=0
                 self.set_state('READ_APRILTAGS_FINAL')
 
     
