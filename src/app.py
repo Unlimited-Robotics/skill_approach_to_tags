@@ -24,7 +24,13 @@ class RayaApplication(RayaApplicationBase):
     async def main(self):
         execute_result = await self.skill_apr2tags.execute_main(
                 execute_args={
-                        'distance_to_goal': self.target_distance
+                        'distance_to_goal': self.target_distance,
+                        'angular_velocity': self.vel_ang,
+                        'linear_velocity': self.vel_lin,
+                        'step_size': self.step_size,
+                        'max_x_error_allowed': self.max_x_err,
+                        'max_y_error_allowed': self.max_y_err,
+                        'max_angle_error_allowed': self.max_a_err,
                     },
                 callback_feedback=self.cb_feedback
             )
@@ -41,39 +47,64 @@ class RayaApplication(RayaApplicationBase):
 
     def get_arguments(self):
         
-        self.tags_size = self.get_argument(
-                '-s', '--tag_size',
+        self.tags_size = self.get_argument('-s', '--tag-size',
                 type=float,
                 help='size of tags to be detected',
                 required=True
             )
-        self.cameras = self.get_argument(
-                '-c', '--cameras-name', 
+        self.cameras = self.get_argument('-c', '--cameras', 
                 type=str, 
                 list=True, 
                 required=True,
                 help='name of cameras to use'
             )   
-        self.target_distance = self.get_argument(
-                '-d', '--distance-to-target', 
+        self.target_distance = self.get_argument('-d', '--distance-to-target', 
                 type=float, 
                 required=False,
                 default=0.5,
                 help='Final target distance'
             )  
-
-        self.identifier = self.get_argument(
-                '-i', '--identifier', 
+        self.identifier = self.get_argument('-i', '--identifier', 
                 type= int,
                 list= True, 
                 required=True,
                 default='',
                 help='ids of the apriltags to be used'
             )  
-        self.save_trajectory = self.get_flag_argument(
-                '--save-trajectory',
+        self.save_trajectory = self.get_flag_argument('--save-trajectory',
                 help='Enable saving trajectory',
             )
+        self.step_size = self.get_argument('--step-size',
+                type=float,
+                help='size of tags to be detected',
+                default=0.2,
+            )
+        self.max_x_err = self.get_argument('--max-x-err',
+                type=float,
+                help='size of tags to be detected',
+                default=0.02,
+            )
+        self.max_y_err = self.get_argument('--max-y-err',
+                type=float,
+                help='size of tags to be detected',
+                default=0.05,
+            )
+        self.max_a_err = self.get_argument('--max-a-err',
+                type=float,
+                help='size of tags to be detected',
+                default=5.0,
+            )
+        self.vel_ang = self.get_argument('--vel-ang',
+                type=float,
+                help='size of tags to be detected',
+                default=10.0,
+            )
+        self.vel_lin = self.get_argument('--vel-lin',
+                type=float,
+                help='size of tags to be detected',
+                default=0.1,
+            )
+        
         try:
             self.identifier = literal_eval(self.identifier)
         except:
