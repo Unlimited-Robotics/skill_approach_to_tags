@@ -15,6 +15,7 @@ ERROR_IDENTIFIER_NOT_DEFINED = (3, f'Identifier must be defined')
 ERROR_NO_TARGET_FOUND = (4, f'Not target found after {NO_TARGET_TIMEOUT_LONG}')
 ERROR_TOO_DISALIGNED = 5
 ERROR_TOO_CLOSE_TO_TARGET = 6
-ERROR_IDENTIFIER_LENGTH_HAS_BEEN_EXCEED = (7, 
+ERROR_TOO_FAR_TO_TARGET = 7
+ERROR_IDENTIFIER_LENGTH_HAS_BEEN_EXCEED = (8, 
                                            'Maximum length of identifier is 2')
-ERROR_MOVING = 8
+ERROR_MOVING = 9

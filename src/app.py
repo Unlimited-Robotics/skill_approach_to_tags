@@ -31,6 +31,7 @@ class RayaApplication(RayaApplicationBase):
                         'max_x_error_allowed': self.max_x_err,
                         'max_y_error_allowed': self.max_y_err,
                         'max_angle_error_allowed': self.max_a_err,
+                        'max_allowed_distance':self.max_distance,
                     },
                 callback_feedback=self.cb_feedback
             )
@@ -104,6 +105,11 @@ class RayaApplication(RayaApplicationBase):
                 help='size of tags to be detected',
                 default=0.1,
             )
+        self.max_distance = self.get_argument(
+            '--max-distance',
+            type= float,
+            help='maximum distance allowed to start approaching',
+            default=2.5)
         
         try:
             self.identifier = literal_eval(self.identifier)
