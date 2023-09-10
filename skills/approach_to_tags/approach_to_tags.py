@@ -310,13 +310,18 @@ class SkillApproachToTags(RayaFSMSkill):
     
     
     def _callback_predictions(self, camera, predictions, timestamp):
-        if predictions and self.waiting_detection:
-            predictions['camera'] = camera
-            self.__predictions_queue.put(predictions)
-            if self.__predictions_queue._qsize() == \
-                    self.execute_args['tags_to_average'] or \
-                    not self.wait_until_complete_queue:                
-                self.__update_predictions()
+        try:
+            if predictions and self.waiting_detection:
+                predictions['camera'] = camera
+                self.__predictions_queue.put(predictions)
+                if self.__predictions_queue._qsize() == \
+                        self.execute_args['tags_to_average'] or \
+                        not self.wait_until_complete_queue:                
+                    self.__update_predictions()
+        except Exception as e:
+            self.abort(254, f'Exception in callback: [{type(e)}]: {e}')
+            import traceback
+            traceback.print_exc()
                 
 
     def __update_predictions(self ):
@@ -325,8 +330,8 @@ class SkillApproachToTags(RayaFSMSkill):
         
         while not self.__predictions_queue.empty():
             prediction = self.__predictions_queue.get()
-            goal =self.__proccess_prediction(prediction)
-            if not goal:
+            goal = self.__proccess_prediction(prediction)
+            if goal is None:
                 continue
             temporal_queue.put(prediction)
             predicts.append(goal)
@@ -380,8 +385,11 @@ class SkillApproachToTags(RayaFSMSkill):
     def __process_multiple_detections(self, predictions):
         # Step 1: Calculate the mean of the list of predictions (arrays of three values)
         predictions_np = np.array(predictions)
-        valid_predictions = predictions_np[~np.isnan(
-            predictions_np).any(axis=1)]
+        
+        try:
+            valid_predictions = predictions_np[~np.isnan(predictions_np).any(axis=1)]
+        except np.AxisError:
+            return None
 
         if len(valid_predictions) == 0:
             return None  # Return None if all positions have NaN values
