@@ -338,7 +338,7 @@ class SkillApproachToTags(RayaFSMSkill):
         self.robot_position=()
 
         if (len(predicts) == self.execute_args['tags_to_average'] or 
-            not self.wait_until_complete_queue):
+                not self.wait_until_complete_queue):
             correct_detection=self.__process_multiple_detections(predicts)
             if correct_detection:
                 self.correct_detection = correct_detection
@@ -348,7 +348,8 @@ class SkillApproachToTags(RayaFSMSkill):
                     self.detections_cameras.add(temporal_queue.get()['camera'])
                 return
             else:
-                temporal_queue.get() # discarding last value 
+                if not temporal_queue.empty():
+                    temporal_queue.get() # discarding last value 
 
         while not temporal_queue.empty():
             self.__predictions_queue.put(temporal_queue.get())
@@ -585,6 +586,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def enter_READ_APRILTAGS_FINAL_CORRECTION(self):
         self.start_detections()
+        self.timer1 = time.time()
         
     
     async def enter_MOVE_LINEAR_FINAL(self):
@@ -607,6 +609,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def enter_READ_APRILTAGS_FINAL(self):
         self.start_detections()
+        self.timer1 = time.time()
 
 
     ### TRANSITIONS ###
