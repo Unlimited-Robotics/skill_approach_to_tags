@@ -628,8 +628,8 @@ class SkillApproachToTags(RayaFSMSkill):
                 await self.step_task
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries += 1 
-                await self.send_feedback("Motion Failed by obstacle")
+                self.tries = self.tries +1 
+                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 self.set_state('ROTATE_UNTIL_DETECTIONS')
@@ -655,8 +655,8 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries += 1 
-                await self.send_feedback("Motion Failed by obstacle")
+                self.tries = self.tries +1 
+                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 self.set_state('ROTATE_UNTIL_DETECTIONS')
@@ -671,8 +671,8 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries += 1 
-                await self.send_feedback("Motion Failed by obstacle")
+                self.tries = self.tries +1 
+                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 
@@ -687,8 +687,8 @@ class SkillApproachToTags(RayaFSMSkill):
             try:
                 await self.step_task
             except RayaMotionObstacleDetected as e:
-                self.tries += 1 
-                await self.send_feedback("Motion Failed by obstacle")
+                self.tries = self.tries +1 
+                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 self.is_final_step = False
@@ -722,8 +722,8 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries += 1 
-                await self.send_feedback("Motion Failed by obstacle")
+                self.tries = self.tries +1 
+                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 self.set_state('ROTATE_UNTIL_DETECTIONS_N')
@@ -738,8 +738,8 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries += 1 
-                await self.send_feedback("Motion Failed by obstacle")
+                self.tries = self.tries +1 
+                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 
@@ -756,8 +756,8 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries += 1 
-                await self.send_feedback("Motion Failed by obstacle")
+                self.tries = self.tries +1 
+                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 self.set_state('READ_APRILTAGS_N')
@@ -777,8 +777,8 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries += 1 
-                await self.send_feedback("Motion Failed by obstacle")
+                self.tries = self.tries +1 
+                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
