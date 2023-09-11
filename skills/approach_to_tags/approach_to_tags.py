@@ -50,6 +50,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     STATES = [
             'READ_APRILTAG',
+            'READ_APRILTAG_1',
             'GO_TO_INTERSECTION',
             'READ_APRILTAG_2',
             'ROTATE_TO_APRILTAGS',
@@ -74,6 +75,8 @@ class SkillApproachToTags(RayaFSMSkill):
 
     STATES_TIMEOUTS = {
             'READ_APRILTAG' :      
+                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+            'READ_APRILTAG_1' :      
                     (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
             'READ_APRILTAGS_N' :   
                     (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
@@ -488,6 +491,10 @@ class SkillApproachToTags(RayaFSMSkill):
         self.start_detections()
 
 
+    async def enter_READ_APRILTAG_1(self):
+        self.start_detections()
+    
+    
     async def enter_GO_TO_INTERSECTION(self):
         await self.planning_calculations()
         self.linear_distance= self.distance
@@ -621,6 +628,11 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.set_state('GO_TO_INTERSECTION')
 
 
+    async def transition_from_READ_APRILTAG_1(self):
+        if self.is_there_detection:
+            self.set_state('GO_TO_INTERSECTION')
+
+
     async def transition_from_GO_TO_INTERSECTION(self):
         if self.step_task.done():
             is_motion_ok = False
@@ -677,7 +689,7 @@ class SkillApproachToTags(RayaFSMSkill):
                     raise e
                 
             if is_motion_ok and self.is_there_detection:
-                self.set_state('READ_APRILTAG')
+                self.set_state('READ_APRILTAG_1')
             else:
                 await self.enter_ROTATE_UNTIL_DETECTIONS()
                 
