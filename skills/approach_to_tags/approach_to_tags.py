@@ -27,6 +27,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     DEFAULT_SETUP_ARGS = {
             'fsm_log_transitions':True,
+            'enable_obstacles': True,
         }
 
     REQUIRED_EXECUTE_ARGS = [
@@ -184,11 +185,13 @@ class SkillApproachToTags(RayaFSMSkill):
             await self.motion.rotate(
                     angle=abs(self.angle_robot_intersection), 
                     angular_speed=self.execute_args['angular_velocity'] * self.angular_sign, 
+                    enable_obstacles=self.setup_args['enable_obstacles'],
                     wait=True,
                 )
         await self.motion.move_linear(
                 distance=self.linear_distance, 
-                x_velocity=self.execute_args['linear_velocity'], 
+                x_velocity=self.execute_args['linear_velocity'],
+                enable_obstacles=self.setup_args['enable_obstacles'], 
                 wait=True,
             )
     
@@ -527,6 +530,7 @@ class SkillApproachToTags(RayaFSMSkill):
         await self.motion.rotate(
                 angle=self.angle_intersection_goal, 
                 angular_speed=self.execute_args['angular_velocity'], 
+                enable_obstacles=self.setup_args['enable_obstacles'],
                 wait=False
             )
     
@@ -539,6 +543,7 @@ class SkillApproachToTags(RayaFSMSkill):
                                        y_velocity=0.0,
                                        angular_velocity=ang_vel,
                                        duration=0.2,
+                                       enable_obstacles=self.setup_args['enable_obstacles'],
                                        wait=False)
     
 
@@ -556,6 +561,7 @@ class SkillApproachToTags(RayaFSMSkill):
         await self.motion.rotate(
                 angle=self.angle_intersection_goal, 
                 angular_speed=self.execute_args['angular_velocity'], 
+                enable_obstacles=self.setup_args['enable_obstacles'],
                 wait=False
             )
         
@@ -568,6 +574,7 @@ class SkillApproachToTags(RayaFSMSkill):
                                        y_velocity=0.0,
                                        angular_velocity=ang_vel,
                                        duration=0.2,
+                                       enable_obstacles=self.setup_args['enable_obstacles'],
                                        wait=False)
         
 
@@ -596,6 +603,7 @@ class SkillApproachToTags(RayaFSMSkill):
             await self.motion.rotate(
                     angle=self.angle_robot_goal, 
                     angular_speed=self.execute_args['angular_velocity'], 
+                    enable_obstacles=self.setup_args['enable_obstacles'],
                     wait=False
                 )
     
@@ -618,7 +626,8 @@ class SkillApproachToTags(RayaFSMSkill):
         if abs(linear_distance) > self.execute_args['max_x_error_allowed']:
             await self.motion.move_linear(
                     distance = linear_distance, 
-                    x_velocity = self.execute_args['linear_velocity'], 
+                    x_velocity = self.execute_args['linear_velocity'],
+                    enable_obstacles=self.setup_args['enable_obstacles'], 
                     wait=False,
                 )
             
