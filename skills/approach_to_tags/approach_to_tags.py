@@ -3,6 +3,7 @@ import queue
 import time
 import asyncio
 import numpy as np
+import json
 from functools import partial
 import tf_transformations as tftr
 from transforms3d import euler
@@ -343,8 +344,11 @@ class SkillApproachToTags(RayaFSMSkill):
             predicts.append(goal)
         self.robot_position=()
 
+        self.log.debug(f'valid detections {len(predicts)}')
         if (len(predicts) == self.execute_args['tags_to_average'] or 
                 not self.wait_until_complete_queue):
+            self.log.debug(f'got all predictions to average')
+            self.log.debug(f'predicts: {json.dumps(predicts, indent=2)}')
             correct_detection=self.__process_multiple_detections(predicts)
             if correct_detection:
                 self.correct_detection = correct_detection
