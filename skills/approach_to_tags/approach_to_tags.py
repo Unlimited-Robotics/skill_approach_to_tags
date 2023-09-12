@@ -22,14 +22,15 @@ class SkillApproachToTags(RayaFSMSkill):
     REQUIRED_SETUP_ARGS = [
             'working_cameras',
             'tags_size',
-            'identifier'
         ]
 
     DEFAULT_SETUP_ARGS = {
             'fsm_log_transitions':True,
         }
 
-    REQUIRED_EXECUTE_ARGS = []
+    REQUIRED_EXECUTE_ARGS = [
+            'identifier'
+        ]
 
     DEFAULT_EXECUTE_ARGS = {
             'distance_to_goal': 0.5,
@@ -166,11 +167,11 @@ class SkillApproachToTags(RayaFSMSkill):
             self.abort(*ERROR_INVALID_ANGLE)
         if not self.handler_name in HANDLER_NAMES:
             self.abort(*ERROR_INVALID_PREDICTOR)
-        if self.setup_args['identifier'] is None and \
-                HANDLER_NAMES[self.handler_name] is not None:
-            self.abort(*ERROR_IDENTIFIER_NOT_DEFINED)
-        if len(self.setup_args['identifier'])>2:
-            self.abort(*ERROR_IDENTIFIER_LENGTH_HAS_BEEN_EXCEED)
+        # if self.execute_args['identifier'] is None and \
+        #         HANDLER_NAMES[self.handler_name] is not None:
+        #     self.abort(*ERROR_IDENTIFIER_NOT_DEFINED)
+        # if len(self.execute_args['identifier'])>2:
+        #     self.abort(*ERROR_IDENTIFIER_LENGTH_HAS_BEEN_EXCEED)
 
 
     async def rotate_and_move_linear(self):
@@ -315,6 +316,7 @@ class SkillApproachToTags(RayaFSMSkill):
     def _callback_predictions(self, camera, predictions, timestamp):
         try:
             if predictions and self.waiting_detection:
+                self.log.debug(f'_callback_predictions [{camera}]: {predictions.keys()}')
                 predictions['camera'] = camera
                 self.__predictions_queue.put(predictions)
                 if self.__predictions_queue._qsize() == \
@@ -360,8 +362,8 @@ class SkillApproachToTags(RayaFSMSkill):
 
     def __proccess_prediction(self, prediction):
         predicts=[]
-        list_size = len(self.setup_args['identifier']) 
-        ids = [int(id) for id in self.setup_args['identifier']]
+        list_size = len(self.execute_args['identifier']) 
+        ids = [int(id) for id in self.execute_args['identifier']]
         for pred in prediction.values():
             if type(pred) == str:
                 continue
