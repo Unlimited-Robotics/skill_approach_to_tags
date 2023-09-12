@@ -15,7 +15,6 @@ class RayaApplication(RayaApplicationBase):
         await self.skill_apr2tags.execute_setup(
                 setup_args={
                         'working_cameras': self.cameras,
-                        'identifier': self.identifier,
                         'tags_size': self.tags_size,
                     },
             )
@@ -32,6 +31,7 @@ class RayaApplication(RayaApplicationBase):
                         'max_y_error_allowed': self.max_y_err,
                         'max_angle_error_allowed': self.max_a_err,
                         'max_allowed_distance':self.max_distance,
+                        'identifier': self.identifier,
                     },
                 callback_feedback=self.cb_feedback
             )

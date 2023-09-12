@@ -320,8 +320,6 @@ class SkillApproachToTags(RayaFSMSkill):
     def _callback_predictions(self, camera, predictions, timestamp):
         try:
             if predictions and self.waiting_detection:
-                self.log.debug(f'_callback_predictions [{camera}]: {predictions.keys()}')
-                self.log.debug(f'waiting for {self.execute_args['identifier']}')
                 predictions['camera'] = camera
                 self.__predictions_queue.put(predictions)
                 if self.__predictions_queue._qsize() == \
@@ -347,12 +345,11 @@ class SkillApproachToTags(RayaFSMSkill):
             predicts.append(goal)
         self.robot_position=()
 
-        self.log.debug(f'valid detections {len(predicts)}')
+
         if (len(predicts) == self.execute_args['tags_to_average'] or 
                 not self.wait_until_complete_queue):
-            self.log.debug(f'got all predictions to average')
-            self.log.debug(f'predicts: {json.dumps(predicts, indent=2)}')
             correct_detection=self.__process_multiple_detections(predicts)
+            self.log.debug(f'correct detection: {correct_detection}')
             if correct_detection:
                 self.correct_detection = correct_detection
                 self.is_there_detection = True
@@ -410,6 +407,8 @@ class SkillApproachToTags(RayaFSMSkill):
         if len(valid_predictions) == 0:
             return None  # Return None if all positions have NaN values
 
+        valid_predictions[:, 2] = np.sign(valid_predictions[:, 2])* \
+            (180-abs(valid_predictions[:, 2]))
         # Step 2: Calculate the mean of the valid predictions (arrays of three values)
         mean_prediction = np.mean(valid_predictions, axis=0)
 
@@ -422,7 +421,8 @@ class SkillApproachToTags(RayaFSMSkill):
             return None
         # Step 5: Calculate the mean of the values below the mean
         mean_below_mean = np.mean(below_mean_values, axis=0)
-
+        mean_below_mean[2]= np.sign(mean_below_mean[2])* \
+            (180-abs(mean_below_mean[2]))
         return mean_below_mean.tolist()
     
 
