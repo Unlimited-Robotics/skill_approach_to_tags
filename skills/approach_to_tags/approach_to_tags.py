@@ -317,6 +317,7 @@ class SkillApproachToTags(RayaFSMSkill):
         try:
             if predictions and self.waiting_detection:
                 self.log.debug(f'_callback_predictions [{camera}]: {predictions.keys()}')
+                self.log.debug(f'waiting for {self.execute_args['identifier']}')
                 predictions['camera'] = camera
                 self.__predictions_queue.put(predictions)
                 if self.__predictions_queue._qsize() == \
