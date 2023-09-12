@@ -371,7 +371,9 @@ class SkillApproachToTags(RayaFSMSkill):
         if len(predicts) < list_size:
             return None
         predicts_final=[]
+        z_mid = 0
         for pred in predicts:
+            z_mid += pred['pose_map'].pose.position.z
             if pred['pose_base_link']:
                 angle=self.__quaternion_to_euler(pred['pose_base_link'])[2]
                 goal = [pred['pose_base_link'].pose.position.x,
@@ -381,7 +383,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 if list_size == 1:
                     return goal
                 predicts_final.append((goal, goal[2]))
-            
+        self.z_mid = z_mid / len(predicts)
         goal = self.__process_multiple_tags(predicts_final)       
         return goal 
 
@@ -814,5 +816,7 @@ class SkillApproachToTags(RayaFSMSkill):
                     "final_error_x": error_x,
                     "final_error_y": distance_y,
                     "final_error_angle": error_angle,
+                    "z_mid": self.z_mid,
+                    "max_y_error": self.execute_args['max_y_error_allowed']
                 }
             self.set_state('END')
