@@ -213,11 +213,15 @@ class SkillApproachToTags(RayaFSMSkill):
         y_final = False
         robot_position = [0, 0, 0]
         self.initial_pos = self.correct_detection
-        distance_x, distance_y = self.get_relative_coords(
-            self.correct_detection[:2], robot_position[:2], 
-            self.correct_detection[2])
+        distance_x, distance_y, _, _ = self.get_relative_coords(
+                self.correct_detection[:2],
+                robot_position[:2],
+                self.correct_detection[2],
+            )
         ini_target_distance = self.get_euclidean_distance(
-            robot_position[:2], self.correct_detection)
+                robot_position[:2], 
+                self.correct_detection,
+            )
         await self.send_feedback({
                 'detected_cameras': self.detections_cameras,
                 'initial_euclidean_distance': ini_target_distance,
@@ -444,15 +448,21 @@ class SkillApproachToTags(RayaFSMSkill):
         return (x_final, y_final)
 
 
-    def get_relative_coords(self, punto_a, punto_b, angulo_direccion):
-        x_a, y_a = punto_a
-        x_b, y_b = punto_b
+    def get_relative_coords(self, point_a, point_b, angle_direction):
+        x_a, y_a = point_a
+        x_b, y_b = point_b
         delta_x = x_b - x_a
         delta_y = y_b - y_a
-        angulo_rad = math.radians(angulo_direccion)
-        x_rel = delta_x * math.cos(angulo_rad) + delta_y * math.sin(angulo_rad)
-        y_rel = delta_y * math.cos(angulo_rad) - delta_x * math.sin(angulo_rad)
-        return x_rel, y_rel
+        angle_rad = math.radians(angle_direction)
+        x_rel = delta_x * math.cos(angle_rad) + delta_y * math.sin(angle_rad)
+        y_rel = delta_y * math.cos(angle_rad) - delta_x * math.sin(angle_rad)
+        x_error = x_rel - self.execute_args['distance_to_goal']
+        angle_error = angle_direction - 180.0
+        if angle_error < -180.0: 
+            angle_error += 360.0
+        elif angle_error > 180.0: 
+            angle_error -= 360.0
+        return x_rel, y_rel, x_error, angle_error
 
 
     def get_euclidean_distance(self, pt1, pt2):
@@ -493,6 +503,19 @@ class SkillApproachToTags(RayaFSMSkill):
     
     def motion_running(self):
         return self.motion.is_moving()
+    
+
+    def send_current_error_feedback(self):
+        _, y_rel, x_error, angle_error = self.get_relative_coords(
+                self.correct_detection[:2], 
+                [0,0], 
+                self.correct_detection[2]
+            )
+        self.send_feedback({
+                'error_x': x_error,
+                'error_y': y_rel,
+                'error_angle': angle_error,
+            })
 
 
     ### ACTIONS ###
@@ -615,9 +638,11 @@ class SkillApproachToTags(RayaFSMSkill):
     
     async def enter_MOVE_LINEAR_FINAL(self):
         await self.planning_calculations()
-        distance_x, distance_y = self.get_relative_coords(
-            self.correct_detection[:2], [0,0], 
-            self.correct_detection[2])
+        distance_x, _, _, _ = self.get_relative_coords(
+                self.correct_detection[:2], 
+                [0,0], 
+                self.correct_detection[2]
+            )
         linear_distance = distance_x - self.execute_args['distance_to_goal']
         await self.send_feedback({
                 'detected_cameras': self.detections_cameras,
@@ -640,6 +665,7 @@ class SkillApproachToTags(RayaFSMSkill):
     ### TRANSITIONS ###
     async def transition_from_READ_APRILTAG(self):
         if self.is_there_detection:
+            self.send_current_error_feedback()
             if await self.check_initial_position():
                 self.set_state('CENTER_TO_TARGET')
             else:
@@ -648,6 +674,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_READ_APRILTAG_1(self):
         if self.is_there_detection:
+            self.send_current_error_feedback()
             self.set_state('GO_TO_INTERSECTION')
 
 
@@ -673,6 +700,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.is_there_detection:
             self.stop_detections()
             if self.is_there_detection:
+                self.send_current_error_feedback()
                 self.set_state('READ_APRILTAGS_N')
             else:
                 self.set_state('ROTATE_TO_APRILTAGS')
@@ -707,6 +735,7 @@ class SkillApproachToTags(RayaFSMSkill):
                     raise e
                 
             if is_motion_ok and self.is_there_detection:
+                self.send_current_error_feedback()
                 self.set_state('READ_APRILTAG_1')
             else:
                 await self.enter_ROTATE_UNTIL_DETECTIONS()
@@ -728,6 +757,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_READ_APRILTAGS_N(self):
         if self.is_there_detection:
+            self.send_current_error_feedback()
             if self.is_final_step:
                 self.set_state('CENTER_TO_TARGET')
             else:
@@ -739,13 +769,13 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.is_there_detection:
             self.stop_detections()
             if self.is_there_detection:
+                self.send_current_error_feedback()
                 self.set_state('READ_APRILTAGS_N')
             else:
                 self.set_state('ROTATE_TO_APRILTAGS_N')
 
 
     async def transition_from_ROTATE_TO_APRILTAGS_N(self):
-        print("transition ROTATE_TO_APRILTAGS_N")
         if not self.motion_running():
             is_motion_ok = False
             try:
@@ -774,6 +804,7 @@ class SkillApproachToTags(RayaFSMSkill):
                     raise e
                 
             if is_motion_ok and self.is_there_detection:
+                self.send_current_error_feedback()
                 self.set_state('READ_APRILTAGS_N')
             else:
                 await self.enter_ROTATE_UNTIL_DETECTIONS_N()
@@ -797,6 +828,7 @@ class SkillApproachToTags(RayaFSMSkill):
     
     async def transition_from_READ_APRILTAGS_FINAL_CORRECTION(self):
         if self.is_there_detection:
+            self.send_current_error_feedback()
             self.set_state('MOVE_LINEAR_FINAL')
 
 
@@ -818,21 +850,18 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_READ_APRILTAGS_FINAL(self):
         if self.is_there_detection:
+            self.send_current_error_feedback()
             await self.planning_calculations()
-            distance_x, distance_y = self.get_relative_coords(
-                    self.correct_detection[:2], [0,0], 
+            _, y_rel, x_error, error_angle = self.get_relative_coords(
+                    self.correct_detection[:2], 
+                    [0,0], 
                     self.correct_detection[2]
                 )
-            error_x = distance_x - self.execute_args['distance_to_goal']
-            error_angle = self.correct_detection[2] - 180.0
-            if error_angle < -180.0: error_angle += 360.0
-            elif error_angle > 180.0: error_angle -= 360.0
             self.main_result = {
                     'detected_cameras': self.detections_cameras,
-                    "final_error_x": error_x,
-                    "final_error_y": distance_y,
+                    "final_error_x": x_error,
+                    "final_error_y": y_rel,
                     "final_error_angle": error_angle,
-                    "z_mid": self.z_mid,
-                    "max_y_error": self.execute_args['max_y_error_allowed']
+                    "target_height": self.z_mid,
                 }
             self.set_state('END')
