@@ -127,8 +127,16 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def finish(self):
         for camera in self.setup_args['working_cameras']:
+            await self.send_feedback({
+                'status_msg': f'Disabling model for camera {camera}...'
+            })
             await self.cv.disable_model(model_obj=self.predictors[camera])
-
+            await self.send_feedback({
+                'status_msg': f'Disabled model for camera {camera}...'
+            })
+        await self.send_feedback({
+            'status': 'Skill finish successfully'
+        })
 
     ### HELPERS ###
 
@@ -273,8 +281,12 @@ class SkillApproachToTags(RayaFSMSkill):
         original_translation = (self.correct_detection[0], 
                                 self.correct_detection[1], 
                                 0.0)
-        original_rotation = (0, 0, math.radians(self.correct_detection[2]))  # 45 degrees in radians
-        original_matrix = tftr.compose_matrix(translate=original_translation, angles=original_rotation)
+        # 45 degrees in radians
+        original_rotation = (0, 0, math.radians(self.correct_detection[2]))  
+        original_matrix = tftr.compose_matrix(
+                translate=original_translation, 
+                angles=original_rotation
+            )
         inverse_matrix = tftr.inverse_matrix(original_matrix)
         inverse_translation = tftr.translation_from_matrix(inverse_matrix)
         inverse_rotation = tftr.euler_from_matrix(inverse_matrix)
@@ -353,7 +365,6 @@ class SkillApproachToTags(RayaFSMSkill):
         if (len(predicts) == self.execute_args['tags_to_average'] or 
                 not self.wait_until_complete_queue):
             correct_detection=self.__process_multiple_detections(predicts)
-            self.log.debug(f'correct detection: {correct_detection}')
             if correct_detection:
                 self.correct_detection = correct_detection
                 self.is_there_detection = True
@@ -400,7 +411,8 @@ class SkillApproachToTags(RayaFSMSkill):
 
 
     def __process_multiple_detections(self, predictions):
-        # Step 1: Calculate the mean of the list of predictions (arrays of three values)
+        # Step 1: Calculate the mean of 
+        # the list of predictions (arrays of three values)
         predictions_np = np.array(predictions)
         
         try:
@@ -413,7 +425,8 @@ class SkillApproachToTags(RayaFSMSkill):
 
         valid_predictions[:, 2] = np.sign(valid_predictions[:, 2])* \
             (180-abs(valid_predictions[:, 2]))
-        # Step 2: Calculate the mean of the valid predictions (arrays of three values)
+        # Step 2: Calculate the mean of 
+        # the valid predictions (arrays of three values)
         mean_prediction = np.mean(valid_predictions, axis=0)
 
         # Step 3: Get the values below the mean
@@ -493,7 +506,8 @@ class SkillApproachToTags(RayaFSMSkill):
         robot_direction = np.array([np.cos(robot_angle_rad), 
                                     np.sin(robot_angle_rad)])
         line_direction = np.array(line_point1[:2]) - np.array(robot_point[:2])
-        line_direction /= np.linalg.norm(line_direction)  # Normalizar el vector de dirección de la línea
+        # Normalizar el vector de dirección de la línea
+        line_direction /= np.linalg.norm(line_direction)  
         angle_rad = np.arctan2(line_direction[1], 
                                line_direction[0]) - np.arctan2(
             robot_direction[1], robot_direction[0])
@@ -505,18 +519,23 @@ class SkillApproachToTags(RayaFSMSkill):
         return self.motion.is_moving()
     
 
-    def send_current_error_feedback(self):
+    async def send_current_error_feedback(self):
         _, y_rel, x_error, angle_error = self.get_relative_coords(
                 self.correct_detection[:2], 
                 [0,0], 
                 self.correct_detection[2]
             )
-        self.send_feedback({
+        await self.send_feedback({
                 'error_x': x_error,
                 'error_y': y_rel,
                 'error_angle': angle_error,
             })
 
+    async def motion_obstacle_counter_handler(self, exception):
+        self.tries = self.tries +1 
+        await self.send_feedback(f'Motion Failed by obstacle #{self.tries}')
+        if self.tries >= self.execute_args['allowed_motion_tries']:
+            raise exception
 
     ### ACTIONS ###
 
@@ -562,12 +581,14 @@ class SkillApproachToTags(RayaFSMSkill):
         self.start_detections(wait_complete_queue=False)
         ang_vel=(self.execute_args['angular_velocity'] *
                  np.sign(self.angle_intersection_goal))
-        await self.motion.set_velocity(x_velocity=0.0,
-                                       y_velocity=0.0,
-                                       angular_velocity=ang_vel,
-                                       duration=0.2,
-                                       enable_obstacles=self.setup_args['enable_obstacles'],
-                                       wait=False)
+        await self.motion.set_velocity(
+                x_velocity=0.0,
+                y_velocity=0.0,
+                angular_velocity=ang_vel,
+                duration=0.2,
+                enable_obstacles=self.setup_args['enable_obstacles'],
+                wait=False
+            )
     
 
     async def  enter_READ_APRILTAGS_N(self):
@@ -665,7 +686,7 @@ class SkillApproachToTags(RayaFSMSkill):
     ### TRANSITIONS ###
     async def transition_from_READ_APRILTAG(self):
         if self.is_there_detection:
-            self.send_current_error_feedback()
+            await self.send_current_error_feedback()
             if await self.check_initial_position():
                 self.set_state('CENTER_TO_TARGET')
             else:
@@ -674,7 +695,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_READ_APRILTAG_1(self):
         if self.is_there_detection:
-            self.send_current_error_feedback()
+            await self.send_current_error_feedback()
             self.set_state('GO_TO_INTERSECTION')
 
 
@@ -685,10 +706,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 await self.step_task
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries = self.tries +1 
-                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
-                if self.tries >= self.execute_args['allowed_motion_tries']:
-                    raise e
+                await self.motion_obstacle_counter_handler(e)
                 self.set_state('ROTATE_UNTIL_DETECTIONS')
 
             if is_motion_ok:
@@ -700,7 +718,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.is_there_detection:
             self.stop_detections()
             if self.is_there_detection:
-                self.send_current_error_feedback()
+                await self.send_current_error_feedback()
                 self.set_state('READ_APRILTAGS_N')
             else:
                 self.set_state('ROTATE_TO_APRILTAGS')
@@ -713,10 +731,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries = self.tries +1 
-                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
-                if self.tries >= self.execute_args['allowed_motion_tries']:
-                    raise e
+                await self.motion_obstacle_counter_handler(e)
                 self.set_state('ROTATE_UNTIL_DETECTIONS')
             if is_motion_ok:
                 self.set_state('READ_APRILTAGS_N')
@@ -729,13 +744,10 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries = self.tries +1 
-                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
-                if self.tries >= self.execute_args['allowed_motion_tries']:
-                    raise e
+                await self.motion_obstacle_counter_handler(e)
                 
             if is_motion_ok and self.is_there_detection:
-                self.send_current_error_feedback()
+                await self.send_current_error_feedback()
                 self.set_state('READ_APRILTAG_1')
             else:
                 await self.enter_ROTATE_UNTIL_DETECTIONS()
@@ -746,10 +758,7 @@ class SkillApproachToTags(RayaFSMSkill):
             try:
                 await self.step_task
             except RayaMotionObstacleDetected as e:
-                self.tries = self.tries +1 
-                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
-                if self.tries >= self.execute_args['allowed_motion_tries']:
-                    raise e
+                await self.motion_obstacle_counter_handler(e)
                 self.is_final_step = False
 
             self.set_state('READ_APRILTAGS_N_2')
@@ -757,7 +766,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_READ_APRILTAGS_N(self):
         if self.is_there_detection:
-            self.send_current_error_feedback()
+            await self.send_current_error_feedback()
             if self.is_final_step:
                 self.set_state('CENTER_TO_TARGET')
             else:
@@ -769,7 +778,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.is_there_detection:
             self.stop_detections()
             if self.is_there_detection:
-                self.send_current_error_feedback()
+                await self.send_current_error_feedback()
                 self.set_state('READ_APRILTAGS_N')
             else:
                 self.set_state('ROTATE_TO_APRILTAGS_N')
@@ -782,10 +791,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries = self.tries +1 
-                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
-                if self.tries >= self.execute_args['allowed_motion_tries']:
-                    raise e
+                await self.motion_obstacle_counter_handler(e)
                 self.set_state('ROTATE_UNTIL_DETECTIONS_N')
             if is_motion_ok:
                 self.set_state('READ_APRILTAGS_N')
@@ -798,13 +804,10 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries = self.tries +1 
-                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
-                if self.tries >= self.execute_args['allowed_motion_tries']:
-                    raise e
+                await self.motion_obstacle_counter_handler(e)
                 
             if is_motion_ok and self.is_there_detection:
-                self.send_current_error_feedback()
+                await self.send_current_error_feedback()
                 self.set_state('READ_APRILTAGS_N')
             else:
                 await self.enter_ROTATE_UNTIL_DETECTIONS_N()
@@ -817,10 +820,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries = self.tries +1 
-                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
-                if self.tries >= self.execute_args['allowed_motion_tries']:
-                    raise e
+                await self.motion_obstacle_counter_handler(e)
                 self.set_state('READ_APRILTAGS_N')
             if is_motion_ok:
                 self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
@@ -828,7 +828,7 @@ class SkillApproachToTags(RayaFSMSkill):
     
     async def transition_from_READ_APRILTAGS_FINAL_CORRECTION(self):
         if self.is_there_detection:
-            self.send_current_error_feedback()
+            await self.send_current_error_feedback()
             self.set_state('MOVE_LINEAR_FINAL')
 
 
@@ -839,10 +839,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.motion.check_last_motion_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
-                self.tries = self.tries +1 
-                await self.send_feedback(f"Motion Failed by obstacle # {self.tries}")
-                if self.tries >= self.execute_args['allowed_motion_tries']:
-                    raise e
+                await self.motion_obstacle_counter_handler(e)
                 self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
             if is_motion_ok:
                 self.set_state('READ_APRILTAGS_FINAL')
@@ -850,7 +847,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_READ_APRILTAGS_FINAL(self):
         if self.is_there_detection:
-            self.send_current_error_feedback()
+            await self.send_current_error_feedback()
             await self.planning_calculations()
             _, y_rel, x_error, error_angle = self.get_relative_coords(
                     self.correct_detection[:2], 

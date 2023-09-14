@@ -39,7 +39,9 @@ class RayaApplication(RayaApplicationBase):
 
 
     async def finish(self):
-        await self.skill_apr2tags.execute_finish()
+        await self.skill_apr2tags.execute_finish(
+            callback_feedback=self.cb_feedback
+        )
 
 
     async def cb_feedback(self, feedback):
