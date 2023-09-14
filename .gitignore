@@ -1,0 +1,7 @@
+approach_to_tags.egg-info/*
+dist/*
+skills/approach_to_tags.egg-info/dependency_links.txt
+skills/approach_to_tags.egg-info/PKG-INFO
+skills/approach_to_tags.egg-info/SOURCES.txt
+skills/approach_to_tags.egg-info/top_level.txt
+build/*
