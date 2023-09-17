@@ -19,3 +19,4 @@ ERROR_TOO_FAR_TO_TARGET = 7
 ERROR_IDENTIFIER_LENGTH_HAS_BEEN_EXCEED = (8, 
                                            'Maximum length of identifier is 2')
 ERROR_MOVING = 9
+ERROR_DISTANCE_TO_CORRECT_TOO_HIGH = 10

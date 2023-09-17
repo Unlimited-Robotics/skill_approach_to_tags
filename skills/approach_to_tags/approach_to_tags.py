@@ -47,6 +47,11 @@ class SkillApproachToTags(RayaFSMSkill):
             'max_angle_error_allowed': 5.0,
             'allowed_motion_tries': 10,
             'max_allowed_distance': 2.5,
+            'scaling_step_to_checking': 1.5,
+            'max_allowed_rotation': 40,
+            'min_allowed_rotation_intersection': 5.0,
+            'max_reverse_adjust': 0.2,
+            'max_allowed_correction_tries': 3
         }
 
     ### FSM ###
@@ -54,7 +59,9 @@ class SkillApproachToTags(RayaFSMSkill):
     STATES = [
             'READ_APRILTAG',
             'READ_APRILTAG_1',
+            'INITIAL_REVERSE_ADJUSTMENT',
             'GO_TO_INTERSECTION',
+            'READ_APRILTAG_INTERSECTION',
             'READ_APRILTAG_2',
             'ROTATE_TO_APRILTAGS',
             'ROTATE_UNTIL_DETECTIONS',
@@ -145,6 +152,9 @@ class SkillApproachToTags(RayaFSMSkill):
         self.waiting_detection = True
         self.wait_until_complete_queue = True
         self.is_final_step = False
+        self.is_final_step_intersection = False
+        self.ignore_calculations = False
+        
 
         #calculations
         self.detections_cameras = set()
@@ -155,6 +165,8 @@ class SkillApproachToTags(RayaFSMSkill):
         self.angle_robot_goal = None
         self.linear_distance = None
         self.tries = 0
+        self.tries_final_error = 0
+        self.step_size_intersection = self.execute_args['step_size']
         
         self.__predictions_queue = queue.Queue()
 
@@ -176,15 +188,26 @@ class SkillApproachToTags(RayaFSMSkill):
         #     self.abort(*ERROR_IDENTIFIER_LENGTH_HAS_BEEN_EXCEED)
 
 
-    async def rotate_and_move_linear(self):
+    async def rotate_and_move_linear(self, 
+                                     angle=None ,
+                                     check_proj_y= True,
+                                     check_max_allowed_angle = False):
+        if angle is None:
+            angle = self.angular_sign* self.angle_robot_intersection
         await self.send_feedback({
-                'rotation': self.angular_sign* self.angle_robot_intersection,
+                'rotation': angle,
                 'linear': self.linear_distance
             })
-        if abs(self.projected_error_y) > self.execute_args['max_y_error_allowed']:
+        if check_max_allowed_angle:
+            if abs(angle)<= self.execute_args[
+                    'min_allowed_rotation_intersection']:
+                angle = 0 
+        if (abs(self.projected_error_y) > \
+                self.execute_args['max_y_error_allowed'] and abs(angle)) or \
+                not check_proj_y:
             await self.motion.rotate(
-                    angle=abs(self.angle_robot_intersection), 
-                    angular_speed=self.execute_args['angular_velocity'] * self.angular_sign, 
+                    angle=angle, 
+                    angular_speed=self.execute_args['angular_velocity'] , 
                     enable_obstacles=self.setup_args['enable_obstacles'],
                     wait=True,
                 )
@@ -251,7 +274,31 @@ class SkillApproachToTags(RayaFSMSkill):
                     f'max_allowed_distance '
                     f'{self.execute_args["max_allowed_distance"]}'
                 )
+        (self.angular_sign, self.distance, self.distance_to_inter, 
+         self.angle_robot_intersection,
+         self.angle_intersection_goal) = \
+             self.get_intersection_info()
+        if abs(self.distance_to_inter) > MAX_MISALIGNMENT:
+            self.abort(
+                    ERROR_TOO_DISALIGNED,
+                    'The robot is disaligned by '
+                    f'{abs(self.distance_to_inter)} meters, max '
+                    f'{MAX_MISALIGNMENT} is allowed.'
+                )
             
+        await self.get_min_correction_distance()
+        if self.additional_distance<self.execute_args["step_size"]:
+            if self.execute_args["step_size"]-self.additional_distance > \
+                    self.execute_args['max_reverse_adjust']:
+                self.abort(
+                    ERROR_DISTANCE_TO_CORRECT_TOO_HIGH,
+                    f'Robot needs too much distance to correct start position.' 
+                    'The distance to correct is ' 
+                    f'{self.execute_args["step_size"]-self.additional_distance:.2f},'
+                    'and it must be less than max_reverse_adjust'
+                    f'{self.execute_args["max_reverse_adjust"]}'
+                )
+
 
     async def planning_calculations(self):
         (self.angular_sign, self.distance, self.distance_to_inter, 
@@ -280,6 +327,25 @@ class SkillApproachToTags(RayaFSMSkill):
         self.execute_args['distance_to_goal'])
         await self.send_feedback({'proyected_y_error': error_y})
         return error_y
+    
+
+    async def get_min_correction_distance(self):
+        distance_x, distance_y =self.get_relative_coords(
+            self.correct_detection[:2], [0,0], 
+            self.correct_detection[2])
+        angle = math.radians(90-self.execute_args['max_allowed_rotation'])
+        proyected_x = distance_x-abs(distance_y) * math.tan(angle) \
+            -self.execute_args['distance_to_goal']
+        await self.send_feedback({"proyected_intersection_x":proyected_x,
+                            "distance_to_goal_x": distance_x - 
+                             self.execute_args['distance_to_goal']})
+        if proyected_x > self.execute_args['min_correction_distance']:
+            self.additional_distance = \
+                self.execute_args['min_correction_distance']
+        else:
+            self.additional_distance = proyected_x
+            
+
 
     def get_intersection_info(self):
         line_2 = self.__get_proyected_point(
@@ -349,7 +415,6 @@ class SkillApproachToTags(RayaFSMSkill):
         if (len(predicts) == self.execute_args['tags_to_average'] or 
                 not self.wait_until_complete_queue):
             correct_detection=self.__process_multiple_detections(predicts)
-            self.log.debug(f'correct detection: {correct_detection}')
             if correct_detection:
                 self.correct_detection = correct_detection
                 self.is_there_detection = True
@@ -496,8 +561,6 @@ class SkillApproachToTags(RayaFSMSkill):
 
 
     ### ACTIONS ###
-
-
     async def enter_READ_APRILTAG(self):
         self.validate_arguments()
         self.start_detections()
@@ -507,17 +570,35 @@ class SkillApproachToTags(RayaFSMSkill):
         self.start_detections()
     
     
-    async def enter_GO_TO_INTERSECTION(self):
+    async def enter_INITIAL_REVERSE_ADJUSTMENT(self):
         await self.planning_calculations()
-        self.linear_distance= self.distance
-        if abs(self.distance_to_inter) > MAX_MISALIGNMENT:
-            self.abort(
-                    ERROR_TOO_DISALIGNED,
-                    'The robot is disaligned by '
-                    f'{abs(self.distance_to_inter)} meters, max '
-                    f'{MAX_MISALIGNMENT} is allowed.'
-                )
-        self.step_task = asyncio.create_task(self.rotate_and_move_linear())
+        self.linear_distance = -(self.execute_args["step_size"] - 
+                                 self.additional_distance)
+        self.additional_distance = self.execute_args["step_size"]
+        self.step_task = asyncio.create_task(self.rotate_and_move_linear( 
+                angle=self.angle_robot_goal , check_proj_y= False ))
+
+
+    async def enter_GO_TO_INTERSECTION(self):
+        if not self.ignore_calculations:
+            self.log.debug("not ignoring tags")
+            await self.planning_calculations()
+        self.linear_distance = self.step_size_intersection
+        if self.distance <= self.step_size_intersection *\
+                self.execute_args['scaling_step_to_checking']:
+            self.linear_distance =  self.distance
+            self.is_final_step_intersection = True
+        else:
+            self.distance -=  self.step_size_intersection
+
+        self.step_task = asyncio.create_task(self.rotate_and_move_linear(
+                check_max_allowed_angle = True
+            ))
+
+
+    async def enter_READ_APRILTAG_INTERSECTION(self):
+        self.start_detections(wait_complete_queue=False)
+        self.timer1 = time.time()
 
 
     async def enter_READ_APRILTAG_2(self):
@@ -582,7 +663,8 @@ class SkillApproachToTags(RayaFSMSkill):
         self.additional_distance = 0.0
         await self.planning_calculations()
         self.linear_distance = self.execute_args['step_size']
-        if self.distance<=self.execute_args['step_size']:
+        if self.distance <= self.execute_args['step_size'] * \
+                            self.execute_args['scaling_step_to_checking']:
             self.is_final_step=True
             self.linear_distance=self.distance
         await self.send_feedback({
@@ -618,7 +700,22 @@ class SkillApproachToTags(RayaFSMSkill):
         distance_x, distance_y = self.get_relative_coords(
             self.correct_detection[:2], [0,0], 
             self.correct_detection[2])
-        linear_distance = distance_x - self.execute_args['distance_to_goal']
+        if abs(self.projected_error_y) > \
+                self.execute_args['max_y_error_allowed']:
+            self.log.debug("correcting final error")
+            self.correcting_final_error = True
+            linear_distance = - self.execute_args['step_size']
+            self.tries_final_error +=1
+            if self.tries_final_error > \
+                self.execute_args['max_allowed_correction_tries']:
+                self.correcting_final_error = False
+                self.log.debug('it was imposible to get the desired error')
+                linear_distance = distance_x - \
+                    self.execute_args['distance_to_goal']
+        else:
+            self.correcting_final_error = False
+            linear_distance = distance_x - \
+                self.execute_args['distance_to_goal']
         await self.send_feedback({
                 'detected_cameras': self.detections_cameras,
                 "final_linear": linear_distance,
@@ -642,6 +739,8 @@ class SkillApproachToTags(RayaFSMSkill):
         if self.is_there_detection:
             if await self.check_initial_position():
                 self.set_state('CENTER_TO_TARGET')
+            elif self.additional_distance<self.execute_args["step_size"]:
+                self.set_state('INITIAL_REVERSE_ADJUSTMENT')
             else:
                 self.set_state('GO_TO_INTERSECTION')
 
@@ -649,6 +748,11 @@ class SkillApproachToTags(RayaFSMSkill):
     async def transition_from_READ_APRILTAG_1(self):
         if self.is_there_detection:
             self.set_state('GO_TO_INTERSECTION')
+
+
+    async def transition_from_INITIAL_REVERSE_ADJUSTMENT(self):
+        if self.step_task.done():
+            self.set_state('READ_APRILTAG_1')
 
 
     async def transition_from_GO_TO_INTERSECTION(self):
@@ -664,8 +768,22 @@ class SkillApproachToTags(RayaFSMSkill):
                     raise e
                 self.set_state('ROTATE_UNTIL_DETECTIONS')
 
-            if is_motion_ok:
+            if is_motion_ok and self.is_final_step_intersection:
                 self.set_state('READ_APRILTAG_2')
+            elif is_motion_ok:
+                self.angle_robot_intersection = 0
+                self.set_state('READ_APRILTAG_INTERSECTION')
+
+
+    async def transition_from_READ_APRILTAG_INTERSECTION(self):
+        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
+                self.is_there_detection:
+            self.stop_detections()
+            self.ignore_calculations = not self.is_there_detection
+            if self.is_there_detection:
+                self.set_state('READ_APRILTAG_1')
+            else:
+                self.set_state('GO_TO_INTERSECTION')
 
 
     async def transition_from_READ_APRILTAG_2(self):
@@ -812,8 +930,12 @@ class SkillApproachToTags(RayaFSMSkill):
                 if self.tries >= self.execute_args['allowed_motion_tries']:
                     raise e
                 self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
-            if is_motion_ok:
+            
+            if is_motion_ok and not self.correcting_final_error:
                 self.set_state('READ_APRILTAGS_FINAL')
+            elif is_motion_ok and self.correcting_final_error:
+                self.is_final_step = False
+                self.set_state('READ_APRILTAGS_N')
 
 
     async def transition_from_READ_APRILTAGS_FINAL(self):
