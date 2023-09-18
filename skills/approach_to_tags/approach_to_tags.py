@@ -51,7 +51,10 @@ class SkillApproachToTags(RayaFSMSkill):
             'max_allowed_rotation': 40,
             'min_allowed_rotation_intersection': 5.0,
             'max_reverse_adjust': 0.2,
-            'max_allowed_correction_tries': 3
+            'max_allowed_correction_tries': 3,
+            'enable_initial_reverse_adjust': False,
+            'enable_final_reverse_adjust': False,
+            'enable_step_intersection': True,
         }
 
     ### FSM ###
@@ -289,14 +292,21 @@ class SkillApproachToTags(RayaFSMSkill):
         await self.get_min_correction_distance()
         if self.additional_distance<self.execute_args["step_size"]:
             if self.execute_args["step_size"]-self.additional_distance > \
-                    self.execute_args['max_reverse_adjust']:
-                self.abort(
-                    ERROR_DISTANCE_TO_CORRECT_TOO_HIGH,
-                    f'Robot needs too much distance to correct start position.' 
+                    self.execute_args['max_reverse_adjust'] or not \
+                    self.execute_args['enable_initial_reverse_adjust']:
+                if self.execute_args['enable_initial_reverse_adjust']:
+                    msg=(f'Robot needs too much distance to correct start position.' 
                     'The distance to correct is ' 
                     f'{self.execute_args["step_size"]-self.additional_distance:.2f},'
                     'and it must be less than max_reverse_adjust'
-                    f'{self.execute_args["max_reverse_adjust"]}'
+                    f'{self.execute_args["max_reverse_adjust"]}')
+                else:
+                    msg=('it is not possible arrive to desired point without '
+                         'exceed the max allowed rotation '
+                         f'{self.execute_args["max_allowed_rotation"]}')
+                self.abort(
+                    ERROR_DISTANCE_TO_CORRECT_TOO_HIGH,
+                    msg
                 )
 
 
@@ -310,7 +320,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.correct_detection
             )
         self.projected_error_y = await self.get_error_projection_y()
-        
+
 
     async def get_error_projection_y(self):
         original_translation = (self.correct_detection[0], 
@@ -585,7 +595,8 @@ class SkillApproachToTags(RayaFSMSkill):
             await self.planning_calculations()
         self.linear_distance = self.step_size_intersection
         if self.distance <= self.step_size_intersection *\
-                self.execute_args['scaling_step_to_checking']:
+                self.execute_args['scaling_step_to_checking'] or \
+                not self.execute_args['enable_step_intersection']:
             self.linear_distance =  self.distance
             self.is_final_step_intersection = True
         else:
@@ -701,15 +712,14 @@ class SkillApproachToTags(RayaFSMSkill):
             self.correct_detection[:2], [0,0], 
             self.correct_detection[2])
         if abs(self.projected_error_y) > \
-                self.execute_args['max_y_error_allowed']:
-            self.log.debug("correcting final error")
+                self.execute_args['max_y_error_allowed'] and \
+                self.execute_args['enable_final_reverse_adjust']:
             self.correcting_final_error = True
-            linear_distance = - self.execute_args['step_size']
-            self.tries_final_error +=1
+            linear_distance = -self.execute_args['step_size']
+            self.tries_final_error += 1
             if self.tries_final_error > \
                 self.execute_args['max_allowed_correction_tries']:
                 self.correcting_final_error = False
-                self.log.debug('it was imposible to get the desired error')
                 linear_distance = distance_x - \
                     self.execute_args['distance_to_goal']
         else:
@@ -957,4 +967,12 @@ class SkillApproachToTags(RayaFSMSkill):
                     "z_mid": self.z_mid,
                     "max_y_error": self.execute_args['max_y_error_allowed']
                 }
+            if abs(distance_y) > self.execute_args['max_y_error_allowed']: 
+                await self.send_feedback(self.main_result)
+                self.abort(
+                    ERROR_FINAL_ERROR_Y_NOT_ACCOMPLISHED,
+                    f'The final error was {distance_y} and should be less than' 
+                     f' {self.execute_args["max_y_error_allowed"]}'
+                )
+
             self.set_state('END')

@@ -20,3 +20,4 @@ ERROR_IDENTIFIER_LENGTH_HAS_BEEN_EXCEED = (8,
                                            'Maximum length of identifier is 2')
 ERROR_MOVING = 9
 ERROR_DISTANCE_TO_CORRECT_TOO_HIGH = 10
+ERROR_FINAL_ERROR_Y_NOT_ACCOMPLISHED = 11
