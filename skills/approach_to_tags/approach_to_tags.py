@@ -444,7 +444,6 @@ class SkillApproachToTags(RayaFSMSkill):
             correct_detection=self.__process_multiple_detections(predicts)
             if correct_detection:
                 self.correct_detection = correct_detection
-                self.log.debug(f"correct_detection {correct_detection}")
                 self.is_there_detection = True
                 self.waiting_detection = False
                 while not temporal_queue.empty():
