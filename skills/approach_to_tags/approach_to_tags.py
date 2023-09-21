@@ -104,6 +104,7 @@ class SkillApproachToTags(RayaFSMSkill):
     async def setup(self):
         self.timer1 = None
         self.step_task = None
+        self.z_mid = 0
 
         self.motion:MotionController = await self.get_controller('motion')
         self.cv:CVController = await self.get_controller('cv')
