@@ -481,6 +481,7 @@ class SkillApproachToTags(RayaFSMSkill):
                                 angle+
                                 self.execute_args['angle_to_goal']]
                 if list_size == 1:
+                    self.z_mid = z_mid
                     return goal
                 predicts_final.append((goal, goal[2]))
         self.z_mid = z_mid / len(predicts)
