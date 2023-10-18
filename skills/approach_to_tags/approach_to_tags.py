@@ -859,7 +859,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -872,7 +872,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -919,7 +919,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -932,7 +932,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -948,7 +948,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -967,7 +967,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok= False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
