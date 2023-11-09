@@ -40,6 +40,7 @@ class SkillApproachToTags(RayaFSMSkill):
             'angular_velocity': 10,
             'linear_velocity': 0.1,
             'min_correction_distance': 0.5,
+            'max_misalignment': 1.0,
             'step_size': 0.2,
             'tags_to_average': 6,
             'max_x_error_allowed': 0.02,
@@ -299,12 +300,12 @@ class SkillApproachToTags(RayaFSMSkill):
          self.angle_robot_intersection,
          self.angle_intersection_goal) = \
              self.get_intersection_info()
-        if abs(self.distance_to_inter) > MAX_MISALIGNMENT:
+        if abs(self.distance_to_inter) > self.execute_args['max_misalignment']:
             self.abort(
                     ERROR_TOO_DISALIGNED,
                     'The robot is disaligned by '
                     f'{abs(self.distance_to_inter)} meters, max '
-                    f'{MAX_MISALIGNMENT} is allowed.'
+                    f'{self.execute_args["max_misalignment"]} is allowed.'
                 )
             
         await self.get_min_correction_distance()
@@ -917,7 +918,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -930,7 +931,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -977,7 +978,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -990,7 +991,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -1006,7 +1007,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok = False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
@@ -1025,7 +1026,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok= False
             try:
-                self.motion.check_last_motion_exception()
+                self.motion.check_last_exception()
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
