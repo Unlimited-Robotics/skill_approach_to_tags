@@ -58,7 +58,7 @@ class SkillApproachToTags(RayaFSMSkill):
             'enable_step_intersection': False,
             'correct_if_only_one_tag': False,
             'max_angle_if_only_one_tag': 30,
-
+            'y_offset': 0.0
         }
 
     ### FSM ###
@@ -450,6 +450,12 @@ class SkillApproachToTags(RayaFSMSkill):
                 not self.wait_until_complete_queue):
             correct_detection=self.__process_multiple_detections(predicts)
             if correct_detection:
+                if self.execute_args['y_offset']:
+                    angle_rad = math.radians(self.execute_args['angle_to_goal'])
+                    offset_x = self.execute_args['y_offset'] * math.sin(angle_rad)
+                    offset_y = self.execute_args['y_offset'] * math.cos(angle_rad)
+                    correct_detection[0] = correct_detection[0] + offset_x
+                    correct_detection[1] = correct_detection[1] - offset_y
                 self.correct_detection = correct_detection
                 self.is_there_detection = True
                 self.waiting_detection = False
