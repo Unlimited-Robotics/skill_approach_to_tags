@@ -11,7 +11,7 @@ from transforms3d import euler
 from raya.controllers import MotionController
 from raya.controllers import CVController
 from raya.skills import RayaFSMSkill
-from raya.exceptions import RayaMotionObstacleDetected
+from raya.exceptions import RayaMotionObstacleDetected, RayaAlreadyMoving
 from .constants import *
 
 
@@ -72,12 +72,11 @@ class SkillApproachToTags(RayaFSMSkill):
             'READ_APRILTAG_INTERSECTION',
             'READ_APRILTAG_2',
             'ROTATE_TO_APRILTAGS',
-            'ROTATE_UNTIL_DETECTIONS',
+            'COMPLETE_LINEAR',
             'STEP_N',
             'READ_APRILTAGS_N',
             'READ_APRILTAGS_N_2',
             'ROTATE_TO_APRILTAGS_N',
-            'ROTATE_UNTIL_DETECTIONS_N',
             'CENTER_TO_TARGET',
             'READ_APRILTAGS_FINAL_CORRECTION',
             'MOVE_LINEAR_FINAL',
@@ -226,13 +225,16 @@ class SkillApproachToTags(RayaFSMSkill):
             await self.motion.rotate(
                     angle=angle, 
                     angular_speed=self.execute_args['angular_velocity'] , 
-                    enable_obstacles=self.setup_args['enable_obstacles'],
+                    enable_obstacles=False,
                     wait=True,
                 )
+        self.distance_left = self.linear_distance
+        self.linear_timer = None
         await self.motion.move_linear(
                 distance=self.linear_distance, 
                 x_velocity=self.execute_args['linear_velocity'],
                 enable_obstacles=self.setup_args['enable_obstacles'], 
+                callback_feedback=self.callback_linear,
                 wait=True,
             )
     
@@ -630,6 +632,32 @@ class SkillApproachToTags(RayaFSMSkill):
         await self.send_feedback(f'Motion Failed by obstacle #{self.tries}')
         if self.tries >= self.execute_args['allowed_motion_tries']:
             raise exception
+    
+
+    async def complete_linear_distance_left(self):
+        await self.sleep(0.2)
+        await self.send_feedback(f'missing_distance {self.distance_left}')
+        self.linear_timer = None
+        await self.motion.move_linear(
+                x_velocity=self.execute_args['linear_velocity'],
+                distance=self.distance_left,
+                enable_obstacles=self.setup_args['enable_obstacles'],
+                callback_feedback=self.callback_linear,
+                wait=True
+            )
+
+
+    def callback_linear(self, feed_code, feed_msg, 
+                        distance_left, nearby_obstacle):
+        if self.linear_timer is None:
+            self.linear_timer = time.time()
+        else:
+            self.distance_left -= (time.time()-self.linear_timer) * \
+                self.execute_args['linear_velocity']
+            self.distance_left = 0.0 if self.distance_left < 0 else \
+                self.distance_left
+            self.linear_timer = time.time()
+         
 
     ### ACTIONS ###
     async def enter_READ_APRILTAG(self):
@@ -638,20 +666,13 @@ class SkillApproachToTags(RayaFSMSkill):
         self.timer1 = time.time()
     
     
-    async def enter_ROTATE_UNTIL_LOOK_TAGS(self, new_time=True):
+    async def enter_ROTATE_UNTIL_LOOK_TAGS(self):
         self.start_detections(wait_complete_queue=False)
-        if new_time:
-            self.maximum_rotation_time = time.time() + \
-                self.execute_args['max_angle_if_only_one_tag']/ \
-                self.execute_args['angular_velocity']
-            self.timer1 = time.time()
         ang_vel=(self.execute_args['angular_velocity'] * self.rot_direction)
-        await self.motion.set_velocity(
-                x_velocity=0.0,
-                y_velocity=0.0,
-                angular_velocity=ang_vel,
-                duration=0.3,
-                enable_obstacles=self.setup_args['enable_obstacles'],
+        await self.motion.rotate(
+                angle=self.execute_args['max_angle_if_only_one_tag'],
+                angular_speed= ang_vel,
+                enable_obstacles=False,
                 wait=False
             )
 
@@ -702,23 +723,14 @@ class SkillApproachToTags(RayaFSMSkill):
         await self.motion.rotate(
                 angle=self.angle_intersection_goal, 
                 angular_speed=self.execute_args['angular_velocity'], 
-                enable_obstacles=self.setup_args['enable_obstacles'],
+                enable_obstacles=False,
                 wait=False
             )
-    
-
-    async def enter_ROTATE_UNTIL_DETECTIONS(self):
-        self.start_detections(wait_complete_queue=False)
-        ang_vel=(self.execute_args['angular_velocity'] *
-                 np.sign(self.angle_intersection_goal))
-        await self.motion.set_velocity(
-                x_velocity=0.0,
-                y_velocity=0.0,
-                angular_velocity=ang_vel,
-                duration=0.2,
-                enable_obstacles=self.setup_args['enable_obstacles'],
-                wait=False
-            )
+        
+        
+    async def enter_COMPLETE_LINEAR(self):
+        self.com_linear_task = asyncio.create_task(
+            self.complete_linear_distance_left())
     
 
     async def  enter_READ_APRILTAGS_N(self):
@@ -735,21 +747,9 @@ class SkillApproachToTags(RayaFSMSkill):
         await self.motion.rotate(
                 angle=self.angle_intersection_goal, 
                 angular_speed=self.execute_args['angular_velocity'], 
-                enable_obstacles=self.setup_args['enable_obstacles'],
+                enable_obstacles=False,
                 wait=False
             )
-        
-
-    async def enter_ROTATE_UNTIL_DETECTIONS_N(self):
-        self.start_detections(wait_complete_queue=False)
-        ang_vel=(self.execute_args['angular_velocity'] *
-                 np.sign(self.angle_intersection_goal))
-        await self.motion.set_velocity(x_velocity=0.0,
-                                       y_velocity=0.0,
-                                       angular_velocity=ang_vel,
-                                       duration=0.2,
-                                       enable_obstacles=self.setup_args['enable_obstacles'],
-                                       wait=False)
         
 
     async def enter_STEP_N(self):
@@ -778,7 +778,7 @@ class SkillApproachToTags(RayaFSMSkill):
             await self.motion.rotate(
                     angle=self.angle_robot_goal, 
                     angular_speed=self.execute_args['angular_velocity'], 
-                    enable_obstacles=self.setup_args['enable_obstacles'],
+                    enable_obstacles=False,
                     wait=False
                 )
     
@@ -844,29 +844,24 @@ class SkillApproachToTags(RayaFSMSkill):
 
 
     async def transition_from_ROTATE_UNTIL_LOOK_TAGS(self):
-        tag_id= 0 if self.rot_direction else 1
-        error = (ERROR_NOT_TAG_MISSING_FOUND,
+        if not self.motion_running():
+            if not self.is_there_detection:
+                tag_id= 0 if self.rot_direction else 1
+                error = (ERROR_NOT_TAG_MISSING_FOUND,
                 'After rotate maximum angle allowed '
                 f'{self.execute_args["max_angle_if_only_one_tag"]}'
                 f'the tag {[self.execute_args["identifier"][tag_id]]} '
                 'was not found')
-        if not self.motion_running():
-            is_motion_ok = False
-            try:
-                self.motion.check_last_motion_exception()
-                is_motion_ok = True
-            except RayaMotionObstacleDetected as e:
-                await self.motion_obstacle_counter_handler(e)
+                self.abort(*error)
                 
-            if is_motion_ok and self.is_there_detection:
-                await self.send_current_error_feedback()
-                self.set_state('READ_APRILTAG')
-            else:
-                if time.time() > self.maximum_rotation_time: 
-                    self.abort(*error)
-                self.maximum_rotation_time += time.time()-self.timer1-0.3
-                self.timer1 = time.time()
-                await self.enter_ROTATE_UNTIL_LOOK_TAGS(new_time=False)
+        if self.is_there_detection:
+            try:
+                await self.motion.cancel_motion()
+            except RayaAlreadyMoving:
+                pass
+            await self.send_current_error_feedback()
+            self.set_state('READ_APRILTAG')
+
    
                 
     async def transition_from_READ_APRILTAG_1(self):
@@ -888,7 +883,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
-                self.set_state('ROTATE_UNTIL_DETECTIONS')
+                self.set_state('COMPLETE_LINEAR')
 
             if is_motion_ok and self.is_final_step_intersection:
                 self.set_state('READ_APRILTAG_2')
@@ -922,31 +917,23 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_ROTATE_TO_APRILTAGS(self):
         if not self.motion_running():
-            is_motion_ok = False
-            try:
-                self.motion.check_last_exception()
-                is_motion_ok = True
-            except RayaMotionObstacleDetected as e:
-                await self.motion_obstacle_counter_handler(e)
-                self.set_state('ROTATE_UNTIL_DETECTIONS')
-            if is_motion_ok:
                 self.set_state('READ_APRILTAGS_N')
     
 
-    async def transition_from_ROTATE_UNTIL_DETECTIONS(self):
-        if not self.motion_running():
-            is_motion_ok = False
+    async def transition_from_COMPLETE_LINEAR(self):
+        if self.com_linear_task.done():
             try:
-                self.motion.check_last_exception()
-                is_motion_ok = True
+                await self.com_linear_task
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
-                
-            if is_motion_ok and self.is_there_detection:
-                await self.send_current_error_feedback()
-                self.set_state('READ_APRILTAG_1')
+                await self.enter_COMPLETE_LINEAR()
+                return 
+            
+            if self.is_final_step_intersection:
+                self.set_state('READ_APRILTAG_2')
             else:
-                await self.enter_ROTATE_UNTIL_DETECTIONS()
+                self.angle_robot_intersection = 0
+                self.set_state('READ_APRILTAG_INTERSECTION')
                 
             
     async def transition_from_STEP_N(self):
@@ -982,31 +969,8 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_ROTATE_TO_APRILTAGS_N(self):
         if not self.motion_running():
-            is_motion_ok = False
-            try:
-                self.motion.check_last_exception()
-                is_motion_ok = True
-            except RayaMotionObstacleDetected as e:
-                await self.motion_obstacle_counter_handler(e)
-                self.set_state('ROTATE_UNTIL_DETECTIONS_N')
-            if is_motion_ok:
-                self.set_state('READ_APRILTAGS_N')
+            self.set_state('READ_APRILTAGS_N')
                 
-
-    async def transition_from_ROTATE_UNTIL_DETECTIONS_N(self):
-        if not self.motion_running():
-            is_motion_ok = False
-            try:
-                self.motion.check_last_exception()
-                is_motion_ok = True
-            except RayaMotionObstacleDetected as e:
-                await self.motion_obstacle_counter_handler(e)
-                
-            if is_motion_ok and self.is_there_detection:
-                await self.send_current_error_feedback()
-                self.set_state('READ_APRILTAGS_N')
-            else:
-                await self.enter_ROTATE_UNTIL_DETECTIONS_N()
 
 
     async def transition_from_CENTER_TO_TARGET(self):
