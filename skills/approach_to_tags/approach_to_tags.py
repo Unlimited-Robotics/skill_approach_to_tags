@@ -638,13 +638,14 @@ class SkillApproachToTags(RayaFSMSkill):
         await self.sleep(0.2)
         await self.send_feedback(f'missing_distance {self.distance_left}')
         self.linear_timer = None
-        await self.motion.move_linear(
-                x_velocity=self.execute_args['linear_velocity'],
-                distance=self.distance_left,
-                enable_obstacles=self.setup_args['enable_obstacles'],
-                callback_feedback=self.callback_linear,
-                wait=True
-            )
+        if self.distance_left > 0:
+            await self.motion.move_linear(
+                    x_velocity=self.execute_args['linear_velocity'],
+                    distance=self.distance_left,
+                    enable_obstacles=self.setup_args['enable_obstacles'],
+                    callback_feedback=self.callback_linear,
+                    wait=True
+                )
 
 
     def callback_linear(self, feed_code, feed_msg, 
