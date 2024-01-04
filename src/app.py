@@ -102,12 +102,12 @@ class RayaApplication(RayaApplicationBase):
         self.vel_ang = self.get_argument('--vel-ang',
                 type=float,
                 help='size of tags to be detected',
-                default=10.0,
+                default=60.0,
             )
         self.vel_lin = self.get_argument('--vel-lin',
                 type=float,
                 help='size of tags to be detected',
-                default=0.1,
+                default=0.5,
             )
         self.max_distance = self.get_argument(
             '--max-distance',
