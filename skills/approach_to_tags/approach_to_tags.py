@@ -483,6 +483,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 continue
             predicts.append(pred)
             self.rot_direction = -1 if ids[0] == int(pred[self.approach]) else 1
+            ids.remove(int(pred[self.approach]))
         if len(predicts) < list_size:
             if len(predicts):
                 self.rotate_to_find_missing_tag = True
