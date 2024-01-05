@@ -1008,7 +1008,7 @@ class SkillApproachToTags(RayaFSMSkill):
             except RayaAlreadyMoving:
                 pass
             await self.send_current_error_feedback()
-            self.set_state('READ_APRILTAG_N')
+            self.set_state('READ_APRILTAGS_N')
 
     async def transition_from_READ_APRILTAGS_N_2(self):
         if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
@@ -1069,7 +1069,7 @@ class SkillApproachToTags(RayaFSMSkill):
             except RayaAlreadyMoving:
                 pass
             await self.send_current_error_feedback()
-            self.set_state('READ_APRILTAG_N')
+            self.set_state('READ_APRILTAGS_N')
 
 
     async def transition_from_MOVE_LINEAR_FINAL(self):
