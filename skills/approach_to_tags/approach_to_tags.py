@@ -80,6 +80,7 @@ class SkillApproachToTags(RayaFSMSkill):
             'ROTATE_TO_APRILTAGS_N',
             'CENTER_TO_TARGET',
             'READ_APRILTAGS_FINAL_CORRECTION',
+            'ROTATE_UNTIL_LOOK_TAGS_FINAL',
             'MOVE_LINEAR_FINAL',
             'READ_APRILTAGS_FINAL',
             'END'
@@ -804,6 +805,17 @@ class SkillApproachToTags(RayaFSMSkill):
     async def enter_READ_APRILTAGS_FINAL_CORRECTION(self):
         self.start_detections()
         self.timer1 = time.time()
+    
+
+    async def enter_ROTATE_UNTIL_LOOK_TAGS_FINAL(self):
+        self.start_detections(wait_complete_queue=False)
+        ang_vel=(FIND_TAGS_ANGULAR_VELOCITY * self.rot_direction)
+        await self.motion.rotate(
+                angle=self.execute_args['max_angle_if_only_one_tag'],
+                angular_speed= ang_vel,
+                enable_obstacles=False,
+                wait=False
+            )
         
     
     async def enter_MOVE_LINEAR_FINAL(self):
@@ -1032,6 +1044,32 @@ class SkillApproachToTags(RayaFSMSkill):
         if self.is_there_detection:
             await self.send_current_error_feedback()
             self.set_state('MOVE_LINEAR_FINAL')
+
+        elif self.rotate_to_find_missing_tag and \
+            (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT and \
+            self.execute_args['correct_if_only_one_tag']:
+            self.rotate_to_find_missing_tag = False
+            self.set_state('ROTATE_UNTIL_LOOK_TAGS_FINAL')
+            
+    
+    async def transition_from_ROTATE_UNTIL_LOOK_TAGS_FINAL(self):
+        if not self.motion_running():
+            if not self.is_there_detection:
+                tag_id= 0 if self.rot_direction else 1
+                error = (ERROR_NOT_TAG_MISSING_FOUND,
+                'After rotate maximum angle allowed '
+                f'{self.execute_args["max_angle_if_only_one_tag"]}'
+                f'the tag {[self.execute_args["identifier"][tag_id]]} '
+                'was not found')
+                self.abort(*error)
+                
+        if self.is_there_detection:
+            try:
+                await self.motion.cancel_motion()
+            except RayaAlreadyMoving:
+                pass
+            await self.send_current_error_feedback()
+            self.set_state('READ_APRILTAG_N')
 
 
     async def transition_from_MOVE_LINEAR_FINAL(self):
