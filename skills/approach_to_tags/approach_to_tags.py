@@ -75,6 +75,7 @@ class SkillApproachToTags(RayaFSMSkill):
             'COMPLETE_LINEAR',
             'STEP_N',
             'READ_APRILTAGS_N',
+            'ROTATE_UNTIL_LOOK_TAGS_N',
             'READ_APRILTAGS_N_2',
             'ROTATE_TO_APRILTAGS_N',
             'CENTER_TO_TARGET',
@@ -488,6 +489,9 @@ class SkillApproachToTags(RayaFSMSkill):
             if len(predicts):
                 self.rotate_to_find_missing_tag = True
             return None
+        else:
+            self.rotate_to_find_missing_tag = False
+            
         predicts_final=[]
         z_mid = 0
         for pred in predicts:
@@ -737,7 +741,19 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def  enter_READ_APRILTAGS_N(self):
         self.start_detections()
+        self.timer1 = time.time()
     
+
+    async def enter_ROTATE_UNTIL_LOOK_TAGS_N(self):
+        self.start_detections(wait_complete_queue=False)
+        ang_vel=(self.execute_args['angular_velocity'] * self.rot_direction)
+        await self.motion.rotate(
+                angle=self.execute_args['max_angle_if_only_one_tag'],
+                angular_speed= ang_vel,
+                enable_obstacles=False,
+                wait=False
+            )
+
 
     async def enter_READ_APRILTAGS_N_2(self):
         self.start_detections(wait_complete_queue=False)
@@ -956,7 +972,31 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.set_state('CENTER_TO_TARGET')
             else:
                 self.set_state('STEP_N')
+        elif self.rotate_to_find_missing_tag and \
+            (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT and \
+            self.execute_args['correct_if_only_one_tag']:
+            self.rotate_to_find_missing_tag = False
+            self.set_state('ROTATE_UNTIL_LOOK_TAGS_N')
+
     
+    async def transition_from_ROTATE_UNTIL_LOOK_TAGS_N(self):
+        if not self.motion_running():
+            if not self.is_there_detection:
+                tag_id= 0 if self.rot_direction else 1
+                error = (ERROR_NOT_TAG_MISSING_FOUND,
+                'After rotate maximum angle allowed '
+                f'{self.execute_args["max_angle_if_only_one_tag"]}'
+                f'the tag {[self.execute_args["identifier"][tag_id]]} '
+                'was not found')
+                self.abort(*error)
+                
+        if self.is_there_detection:
+            try:
+                await self.motion.cancel_motion()
+            except RayaAlreadyMoving:
+                pass
+            await self.send_current_error_feedback()
+            self.set_state('READ_APRILTAG_N')
 
     async def transition_from_READ_APRILTAGS_N_2(self):
         if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
