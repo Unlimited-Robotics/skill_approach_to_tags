@@ -674,7 +674,7 @@ class SkillApproachToTags(RayaFSMSkill):
     
     async def enter_ROTATE_UNTIL_LOOK_TAGS(self):
         self.start_detections(wait_complete_queue=False)
-        ang_vel=(self.execute_args['angular_velocity'] * self.rot_direction)
+        ang_vel=(FIND_TAGS_ANGULAR_VELOCITY * self.rot_direction)
         await self.motion.rotate(
                 angle=self.execute_args['max_angle_if_only_one_tag'],
                 angular_speed= ang_vel,
@@ -746,7 +746,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def enter_ROTATE_UNTIL_LOOK_TAGS_N(self):
         self.start_detections(wait_complete_queue=False)
-        ang_vel=(self.execute_args['angular_velocity'] * self.rot_direction)
+        ang_vel=(FIND_TAGS_ANGULAR_VELOCITY * self.rot_direction)
         await self.motion.rotate(
                 angle=self.execute_args['max_angle_if_only_one_tag'],
                 angular_speed= ang_vel,
