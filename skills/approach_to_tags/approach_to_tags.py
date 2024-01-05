@@ -370,7 +370,7 @@ class SkillApproachToTags(RayaFSMSkill):
             self.correct_detection[:2], [0,0], 
             self.correct_detection[2])
         angle = math.radians(90-self.execute_args['max_allowed_rotation'])
-        projected_x = distance_x-abs(distance_y) * math.tan(angle) \
+        projected_x = distance_x - abs(distance_y) * math.tan(angle) \
             -self.execute_args['distance_to_goal']
         await self.send_feedback({"proyected_intersection_x":projected_x,
                             "distance_to_goal_x": distance_x - 
@@ -542,7 +542,7 @@ class SkillApproachToTags(RayaFSMSkill):
     def __process_multiple_tags(self, predicts):
         pt1 = predicts[0][0]
         pt2 = predicts[1][0]
-        angle4 = math.degrees(np.arctan((pt1[1] - pt2[1])/(pt1[0] - pt2[0])))
+        angle4 = math.degrees(np.arctan((pt1[1] - pt2[1])/(pt1[0] - pt2[0]+ EPSILON)))
         angle5 = np.sign(angle4)*(90-abs(angle4))
         final_point = ((pt1[0] + pt2[0]) / 2, (pt1[1] + pt2[1]) / 2, 
                        np.sign(angle5)*(180-abs(angle5))+
