@@ -11,9 +11,9 @@ from transforms3d import euler
 from raya.controllers import MotionController
 from raya.controllers import CVController
 from raya.skills import RayaFSMSkill
-from raya.exceptions import RayaMotionObstacleDetected, RayaAlreadyMoving
+from raya.exceptions import RayaMotionObstacleDetected, RayaNotMoving
 from .constants import *
-
+    
 
 
 class SkillApproachToTags(RayaFSMSkill):
@@ -75,10 +75,12 @@ class SkillApproachToTags(RayaFSMSkill):
             'COMPLETE_LINEAR',
             'STEP_N',
             'READ_APRILTAGS_N',
+            'ROTATE_UNTIL_LOOK_TAGS_N',
             'READ_APRILTAGS_N_2',
             'ROTATE_TO_APRILTAGS_N',
             'CENTER_TO_TARGET',
             'READ_APRILTAGS_FINAL_CORRECTION',
+            'ROTATE_UNTIL_LOOK_TAGS_FINAL',
             'MOVE_LINEAR_FINAL',
             'READ_APRILTAGS_FINAL',
             'END'
@@ -370,7 +372,7 @@ class SkillApproachToTags(RayaFSMSkill):
             self.correct_detection[:2], [0,0], 
             self.correct_detection[2])
         angle = math.radians(90-self.execute_args['max_allowed_rotation'])
-        projected_x = distance_x-abs(distance_y) * math.tan(angle) \
+        projected_x = distance_x - abs(distance_y) * math.tan(angle) \
             -self.execute_args['distance_to_goal']
         await self.send_feedback({"proyected_intersection_x":projected_x,
                             "distance_to_goal_x": distance_x - 
@@ -483,10 +485,14 @@ class SkillApproachToTags(RayaFSMSkill):
                 continue
             predicts.append(pred)
             self.rot_direction = -1 if ids[0] == int(pred[self.approach]) else 1
+            ids.remove(int(pred[self.approach]))
         if len(predicts) < list_size:
             if len(predicts):
                 self.rotate_to_find_missing_tag = True
             return None
+        else:
+            self.rotate_to_find_missing_tag = False
+            
         predicts_final=[]
         z_mid = 0
         for pred in predicts:
@@ -542,7 +548,7 @@ class SkillApproachToTags(RayaFSMSkill):
     def __process_multiple_tags(self, predicts):
         pt1 = predicts[0][0]
         pt2 = predicts[1][0]
-        angle4 = math.degrees(np.arctan((pt1[1] - pt2[1])/(pt1[0] - pt2[0])))
+        angle4 = math.degrees(np.arctan((pt1[1] - pt2[1])/(pt1[0] - pt2[0]+ EPSILON)))
         angle5 = np.sign(angle4)*(90-abs(angle4))
         final_point = ((pt1[0] + pt2[0]) / 2, (pt1[1] + pt2[1]) / 2, 
                        np.sign(angle5)*(180-abs(angle5))+
@@ -669,7 +675,7 @@ class SkillApproachToTags(RayaFSMSkill):
     
     async def enter_ROTATE_UNTIL_LOOK_TAGS(self):
         self.start_detections(wait_complete_queue=False)
-        ang_vel=(self.execute_args['angular_velocity'] * self.rot_direction)
+        ang_vel=(FIND_TAGS_ANGULAR_VELOCITY * self.rot_direction)
         await self.motion.rotate(
                 angle=self.execute_args['max_angle_if_only_one_tag'],
                 angular_speed= ang_vel,
@@ -736,7 +742,19 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def  enter_READ_APRILTAGS_N(self):
         self.start_detections()
+        self.timer1 = time.time()
     
+
+    async def enter_ROTATE_UNTIL_LOOK_TAGS_N(self):
+        self.start_detections(wait_complete_queue=False)
+        ang_vel=(FIND_TAGS_ANGULAR_VELOCITY * self.rot_direction)
+        await self.motion.rotate(
+                angle=self.execute_args['max_angle_if_only_one_tag'],
+                angular_speed= ang_vel,
+                enable_obstacles=False,
+                wait=False
+            )
+
 
     async def enter_READ_APRILTAGS_N_2(self):
         self.start_detections(wait_complete_queue=False)
@@ -787,6 +805,17 @@ class SkillApproachToTags(RayaFSMSkill):
     async def enter_READ_APRILTAGS_FINAL_CORRECTION(self):
         self.start_detections()
         self.timer1 = time.time()
+    
+
+    async def enter_ROTATE_UNTIL_LOOK_TAGS_FINAL(self):
+        self.start_detections(wait_complete_queue=False)
+        ang_vel=(FIND_TAGS_ANGULAR_VELOCITY * self.rot_direction)
+        await self.motion.rotate(
+                angle=self.execute_args['max_angle_if_only_one_tag'],
+                angular_speed= ang_vel,
+                enable_obstacles=False,
+                wait=False
+            )
         
     
     async def enter_MOVE_LINEAR_FINAL(self):
@@ -858,7 +887,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if self.is_there_detection:
             try:
                 await self.motion.cancel_motion()
-            except RayaAlreadyMoving:
+            except RayaNotMoving:
                 pass
             await self.send_current_error_feedback()
             self.set_state('READ_APRILTAG')
@@ -955,7 +984,31 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.set_state('CENTER_TO_TARGET')
             else:
                 self.set_state('STEP_N')
+        elif self.rotate_to_find_missing_tag and \
+            (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT and \
+            self.execute_args['correct_if_only_one_tag']:
+            self.rotate_to_find_missing_tag = False
+            self.set_state('ROTATE_UNTIL_LOOK_TAGS_N')
+
     
+    async def transition_from_ROTATE_UNTIL_LOOK_TAGS_N(self):
+        if not self.motion_running():
+            if not self.is_there_detection:
+                tag_id= 0 if self.rot_direction else 1
+                error = (ERROR_NOT_TAG_MISSING_FOUND,
+                'After rotate maximum angle allowed '
+                f'{self.execute_args["max_angle_if_only_one_tag"]}'
+                f'the tag {[self.execute_args["identifier"][tag_id]]} '
+                'was not found')
+                self.abort(*error)
+                
+        if self.is_there_detection:
+            try:
+                await self.motion.cancel_motion()
+            except RayaNotMoving:
+                pass
+            await self.send_current_error_feedback()
+            self.set_state('READ_APRILTAGS_N')
 
     async def transition_from_READ_APRILTAGS_N_2(self):
         if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
@@ -991,6 +1044,32 @@ class SkillApproachToTags(RayaFSMSkill):
         if self.is_there_detection:
             await self.send_current_error_feedback()
             self.set_state('MOVE_LINEAR_FINAL')
+
+        elif self.rotate_to_find_missing_tag and \
+            (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT and \
+            self.execute_args['correct_if_only_one_tag']:
+            self.rotate_to_find_missing_tag = False
+            self.set_state('ROTATE_UNTIL_LOOK_TAGS_FINAL')
+
+    
+    async def transition_from_ROTATE_UNTIL_LOOK_TAGS_FINAL(self):
+        if not self.motion_running():
+            if not self.is_there_detection:
+                tag_id= 0 if self.rot_direction else 1
+                error = (ERROR_NOT_TAG_MISSING_FOUND,
+                'After rotate maximum angle allowed '
+                f'{self.execute_args["max_angle_if_only_one_tag"]}'
+                f'the tag {[self.execute_args["identifier"][tag_id]]} '
+                'was not found')
+                self.abort(*error)
+                
+        if self.is_there_detection:
+            try:
+                await self.motion.cancel_motion()
+            except RayaNotMoving:
+                pass
+            await self.send_current_error_feedback()
+            self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
 
 
     async def transition_from_MOVE_LINEAR_FINAL(self):
