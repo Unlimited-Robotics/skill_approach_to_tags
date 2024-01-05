@@ -1050,7 +1050,7 @@ class SkillApproachToTags(RayaFSMSkill):
             self.execute_args['correct_if_only_one_tag']:
             self.rotate_to_find_missing_tag = False
             self.set_state('ROTATE_UNTIL_LOOK_TAGS_FINAL')
-            
+
     
     async def transition_from_ROTATE_UNTIL_LOOK_TAGS_FINAL(self):
         if not self.motion_running():
@@ -1069,7 +1069,7 @@ class SkillApproachToTags(RayaFSMSkill):
             except RayaAlreadyMoving:
                 pass
             await self.send_current_error_feedback()
-            self.set_state('READ_APRILTAG_N')
+            self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
 
 
     async def transition_from_MOVE_LINEAR_FINAL(self):
