@@ -2,7 +2,7 @@ from ast import literal_eval
 from raya.application_base import RayaApplicationBase
 from raya.tools.image import show_image, draw_on_image
 from raya.skills import RayaSkill, RayaSkillHandler
-
+from raya.enumerations import SKILL_STATE
 from skills.approach_to_tags import SkillApproachToTags
 
 
@@ -21,22 +21,47 @@ class RayaApplication(RayaApplicationBase):
 
 
     async def main(self):
-        execute_result = await self.skill_apr2tags.execute_main(
-                execute_args={
-                        'distance_to_goal': self.target_distance,
-                        'angular_velocity': self.vel_ang,
-                        'linear_velocity': self.vel_lin,
-                        'step_size': self.step_size,
-                        'max_x_error_allowed': self.max_x_err,
-                        'max_y_error_allowed': self.max_y_err,
-                        'max_angle_error_allowed': self.max_a_err,
-                        'max_allowed_distance':self.max_distance,
-                        'identifier': self.identifier,
-                        'y_offset': self.y_offset,
-                        'correct_if_only_one_tag': True,
-                    },
-                callback_feedback=self.cb_feedback
-            )
+        try:
+            execute_result = await self.skill_apr2tags.execute_main(
+                    execute_args={
+                            'distance_to_goal': self.target_distance,
+                            'angular_velocity': self.vel_ang,
+                            'linear_velocity': self.vel_lin,
+                            'step_size': self.step_size,
+                            'max_x_error_allowed': self.max_x_err,
+                            'max_y_error_allowed': self.max_y_err,
+                            'max_angle_error_allowed': self.max_a_err,
+                            'max_allowed_distance':self.max_distance,
+                            'identifier': self.identifier,
+                            'y_offset': self.y_offset,
+                            'correct_if_only_one_tag': True,
+                        },
+                    callback_feedback=self.cb_feedback
+                )
+        except Exception as e:
+            print(e)
+        try:
+            execute_result = await self.skill_apr2tags.execute_main(
+                    execute_args={
+                            'distance_to_goal': self.target_distance,
+                            'angular_velocity': self.vel_ang,
+                            'linear_velocity': self.vel_lin,
+                            'step_size': self.step_size,
+                            'max_x_error_allowed': self.max_x_err,
+                            'max_y_error_allowed': self.max_y_err,
+                            'max_angle_error_allowed': self.max_a_err,
+                            'max_allowed_distance':self.max_distance,
+                            'identifier': self.identifier,
+                            'y_offset': self.y_offset,
+                            'correct_if_only_one_tag': True,
+                        },
+                    callback_feedback=self.cb_feedback,wait=False
+                )
+        except Exception as e:
+            print(e)
+        while self.skill_apr2tags.get_execution_state()==SKILL_STATE.EXECUTING: 
+            self.sleep(0.1)
+        self.skill_apr2tags.raise_last_execution_exception()
         self.log.debug(execute_result)
 
 
@@ -82,22 +107,22 @@ class RayaApplication(RayaApplicationBase):
         self.step_size = self.get_argument('--step-size',
                 type=float,
                 help='size of tags to be detected',
-                default=0.2,
+                default=0.1,
             )
         self.max_x_err = self.get_argument('--max-x-err',
                 type=float,
                 help='size of tags to be detected',
-                default=0.02,
+                default=0.01,
             )
         self.max_y_err = self.get_argument('--max-y-err',
                 type=float,
                 help='size of tags to be detected',
-                default=0.05,
+                default=0.01,
             )
         self.max_a_err = self.get_argument('--max-a-err',
                 type=float,
                 help='size of tags to be detected',
-                default=5.0,
+                default=2.0,
             )
         self.vel_ang = self.get_argument('--vel-ang',
                 type=float,
@@ -107,7 +132,7 @@ class RayaApplication(RayaApplicationBase):
         self.vel_lin = self.get_argument('--vel-lin',
                 type=float,
                 help='size of tags to be detected',
-                default=0.5,
+                default=0.4,
             )
         self.max_distance = self.get_argument(
             '--max-distance',
