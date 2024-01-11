@@ -54,11 +54,13 @@ class SkillApproachToTags(RayaFSMSkill):
             'max_reverse_adjust': 0.2,
             'max_allowed_correction_tries': 3,
             'enable_initial_reverse_adjust': False,
-            'enable_final_reverse_adjust': False,
+            'enable_final_reverse_adjust': True,
             'enable_step_intersection': False,
-            'correct_if_only_one_tag': False,
-            'max_angle_if_only_one_tag': 30,
-            'y_offset': 0.0
+            'correct_if_only_one_tag': True,
+            # 'max_angle_if_only_one_tag': 30, 
+            'y_offset': 0.0,
+            'initial_scan': True,
+            'scan_angle': 30.0
         }
 
     ### FSM ###
@@ -72,6 +74,8 @@ class SkillApproachToTags(RayaFSMSkill):
             'READ_APRILTAG_INTERSECTION',
             'READ_APRILTAG_2',
             'ROTATE_TO_APRILTAGS',
+            'SCAN_LEFT',
+            'SCAN_RIGHT',
             'COMPLETE_LINEAR',
             'STEP_N',
             'READ_APRILTAGS_N',
@@ -113,7 +117,9 @@ class SkillApproachToTags(RayaFSMSkill):
         self.timer1 = None
         self.step_task = None
         self.z_mid = 0
-
+        self.__predictions_queue = queue.Queue()
+        self.scan_done = False
+        self.scan = False
         self.motion:MotionController = await self.get_controller('motion')
         self.cv:CVController = await self.get_controller('cv')
         model_params = {
@@ -189,7 +195,6 @@ class SkillApproachToTags(RayaFSMSkill):
         self.tries_final_error = 0
         self.step_size_intersection = self.execute_args['step_size']
         self.rot_direction = 1
-        self.__predictions_queue = queue.Queue()
 
         self.additional_distance = \
                 self.execute_args['min_correction_distance']
@@ -435,6 +440,10 @@ class SkillApproachToTags(RayaFSMSkill):
                         self.execute_args['tags_to_average'] or \
                         not self.wait_until_complete_queue:                
                     self.__update_predictions()
+            if self.__predictions_queue._qsize() == 0 and not self.scan_done:
+                self.scan = True
+            else:
+                self.scan = False
         except Exception as e:
             self.abort(254, f'Exception in callback: [{type(e)}]: {e}')
             import traceback
@@ -474,7 +483,6 @@ class SkillApproachToTags(RayaFSMSkill):
             else:
                 if not temporal_queue.empty():
                     temporal_queue.get() # discarding last value 
-
         while not temporal_queue.empty():
             self.__predictions_queue.put(temporal_queue.get())
 
@@ -685,7 +693,30 @@ class SkillApproachToTags(RayaFSMSkill):
         # quaternion = quaternion_from_euler(0.0, 0.0, np.radians(self.execute_args['max_angle_if_only_one_tag'])) 
         # self.cv.publish_transform('base_link', 'robot_route',[0,0,0], quaternion)
         await self.motion.rotate(
-                angle=self.execute_args['max_angle_if_only_one_tag'],
+                angle=self.execute_args['scan_angle'],
+                angular_speed= ang_vel,
+                enable_obstacles=False,
+                wait=False
+            )
+
+
+    async def enter_SCAN_LEFT(self):
+        self.start_detections(wait_complete_queue=False)
+        ang_vel=(FIND_TAGS_ANGULAR_VELOCITY * 1)
+        self.scan_done = True
+        await self.motion.rotate(
+                angle=self.execute_args['scan_angle'],
+                angular_speed= ang_vel,
+                enable_obstacles=False,
+                wait=False
+            )
+        
+
+    async def enter_SCAN_RIGHT(self):
+        self.start_detections(wait_complete_queue=False)
+        ang_vel=(FIND_TAGS_ANGULAR_VELOCITY * -1)
+        await self.motion.rotate(
+                angle=self.execute_args['scan_angle']*2,
                 angular_speed= ang_vel,
                 enable_obstacles=False,
                 wait=False
@@ -761,7 +792,7 @@ class SkillApproachToTags(RayaFSMSkill):
         # quaternion = quaternion_from_euler(0.0, 0.0, self.execute_args['max_angle_if_only_one_tag']) 
         # self.cv.publish_transform('base_link', 'robot_route',[0,0,0], quaternion)
         await self.motion.rotate(
-                angle=self.execute_args['max_angle_if_only_one_tag'],
+                angle=self.execute_args['scan_angle'],
                 angular_speed= ang_vel,
                 enable_obstacles=False,
                 wait=False
@@ -844,7 +875,7 @@ class SkillApproachToTags(RayaFSMSkill):
         # quaternion = quaternion_from_euler(0.0, 0.0, self.execute_args['max_angle_if_only_one_tag']) 
         # self.cv.publish_transform('base_link', 'robot_route',[0,0,0], quaternion)
         await self.motion.rotate(
-                angle=self.execute_args['max_angle_if_only_one_tag'],
+                angle=self.execute_args['scan_angle'],
                 angular_speed= ang_vel,
                 enable_obstacles=False,
                 wait=False
@@ -900,11 +931,14 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.set_state('INITIAL_REVERSE_ADJUSTMENT')
             else:
                 self.set_state('GO_TO_INTERSECTION')
-        elif self.rotate_to_find_missing_tag and \
-            (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT and \
-            self.execute_args['correct_if_only_one_tag']:
-            self.rotate_to_find_missing_tag = False
-            self.set_state('ROTATE_UNTIL_LOOK_TAGS')
+        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT:
+            if self.rotate_to_find_missing_tag and \
+                    self.execute_args['correct_if_only_one_tag']:
+                self.rotate_to_find_missing_tag = False
+                self.set_state('ROTATE_UNTIL_LOOK_TAGS')
+            if self.scan and self.execute_args['scan_angle'] and not self.scan_done:
+                self.scan = False
+                self.set_state('SCAN_LEFT')    
 
 
     async def transition_from_ROTATE_UNTIL_LOOK_TAGS(self):
@@ -913,7 +947,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 tag_id= 0 if self.rot_direction else 1
                 error = (ERROR_NOT_TAG_MISSING_FOUND,
                 'After rotate maximum angle allowed '
-                f'{self.execute_args["max_angle_if_only_one_tag"]}'
+                f'{self.execute_args["scan_angle"]}'
                 f'the tag {[self.execute_args["identifier"][tag_id]]} '
                 'was not found')
                 self.abort(*error)
@@ -926,8 +960,38 @@ class SkillApproachToTags(RayaFSMSkill):
             await self.send_current_error_feedback()
             self.set_state('READ_APRILTAG')
 
-   
-                
+
+    async def transition_from_SCAN_LEFT(self):
+        if not self.motion_running():
+            if not self.is_there_detection:
+                self.set_state('SCAN_RIGHT')
+        if self.is_there_detection:
+            try:
+                await self.motion.cancel_motion()
+            except RayaNotMoving:
+                pass
+            await self.send_current_error_feedback()
+            self.set_state('READ_APRILTAG')
+
+
+    async def transition_from_SCAN_RIGHT(self):
+        if not self.motion_running():
+            if not self.is_there_detection:
+                if self.rotate_to_find_missing_tag:
+                    self.set_state('ROTATE_UNTIL_LOOK_TAGS')
+                else:
+                    error = (ERROR_NOT_TAG_MISSING_FOUND,
+                    'After scan the tag/s was not found')
+                    self.abort(*error) 
+        if self.is_there_detection:
+            try:
+                await self.motion.cancel_motion()
+            except RayaNotMoving:
+                pass
+            await self.send_current_error_feedback()
+            self.set_state('READ_APRILTAG')
+
+
     async def transition_from_READ_APRILTAG_1(self):
         if self.is_there_detection:
             await self.send_current_error_feedback()
@@ -1031,7 +1095,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 tag_id= 0 if self.rot_direction else 1
                 error = (ERROR_NOT_TAG_MISSING_FOUND,
                 'After rotate maximum angle allowed '
-                f'{self.execute_args["max_angle_if_only_one_tag"]}'
+                f'{self.execute_args["scan_angle"]}'
                 f'the tag {[self.execute_args["identifier"][tag_id]]} '
                 'was not found')
                 self.abort(*error)
@@ -1134,7 +1198,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 tag_id= 0 if self.rot_direction else 1
                 error = (ERROR_NOT_TAG_MISSING_FOUND,
                 'After rotate maximum angle allowed '
-                f'{self.execute_args["max_angle_if_only_one_tag"]}'
+                f'{self.execute_args["scan_angle"]}'
                 f'the tag {[self.execute_args["identifier"][tag_id]]} '
                 'was not found')
                 self.abort(*error)
