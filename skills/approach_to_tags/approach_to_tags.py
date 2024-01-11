@@ -963,6 +963,8 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_SCAN_LEFT(self):
         if not self.motion_running():
+            if self.rotate_to_find_missing_tag:
+                self.set_state('ROTATE_UNTIL_LOOK_TAGS')
             if not self.is_there_detection:
                 self.set_state('SCAN_RIGHT')
         if self.is_there_detection:
