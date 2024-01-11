@@ -79,6 +79,8 @@ class SkillApproachToTags(RayaFSMSkill):
             'READ_APRILTAGS_N_2',
             'ROTATE_TO_APRILTAGS_N',
             'CENTER_TO_TARGET',
+            'READ_APRILTAGS_CENTER',
+            'CENTER_TO_TARGET_FINAL',
             'READ_APRILTAGS_FINAL_CORRECTION',
             'ROTATE_UNTIL_LOOK_TAGS_FINAL',
             'MOVE_LINEAR_FINAL',
@@ -173,6 +175,7 @@ class SkillApproachToTags(RayaFSMSkill):
         self.is_final_step_intersection = False
         self.ignore_calculations = False
         self.rotate_to_find_missing_tag = False
+        self.jump_center_final = False
 
         #calculations
         self.detections_cameras = set()
@@ -186,7 +189,6 @@ class SkillApproachToTags(RayaFSMSkill):
         self.tries_final_error = 0
         self.step_size_intersection = self.execute_args['step_size']
         self.rot_direction = 1
-        self.final_center_to_target = False
         self.__predictions_queue = queue.Queue()
 
         self.additional_distance = \
@@ -799,29 +801,37 @@ class SkillApproachToTags(RayaFSMSkill):
 
 
     async def enter_CENTER_TO_TARGET(self):
-        self.final_center_to_target = False
         await self.planning_calculations()
         await self.send_feedback({
                 'detected_cameras': self.detections_cameras,
                 'final_rotation': self.angle_robot_goal,
             })
-        self.angle_to_robot_sign = np.sign(self.angle_robot_goal)
-        print(f'INITIAL: {self.angle_robot_goal}')
-        # self.set_velocity_future = await self.motion.set_velocity(
-        #         x_velocity=0.0,
-        #         y_velocity=0.0,
-        #         angular_velocity=np.sign(self.angle_robot_goal)*0.03, 
-        #         duration=500.0, 
-        #         ang_unit=ANGLE_UNIT.RADIANS,
-        #         wait=False,
-        #     )
-            # await self.motion.rotate(
-            #         angle=self.angle_robot_goal, 
-            #         angular_speed=self.execute_args['angular_velocity'], 
-            #         enable_obstacles=False,
-            #         wait=False
-            #     )
+        await self.motion.rotate(
+                angle=self.angle_robot_goal, 
+                angular_speed=self.execute_args['angular_velocity'], 
+                enable_obstacles=False,
+                wait=False
+            )
     
+
+    async def  enter_READ_APRILTAGS_CENTER(self):
+        self.start_detections()
+        self.timer1 = time.time()
+
+
+    async def enter_CENTER_TO_TARGET_FINAL(self):
+        await self.planning_calculations()
+        await self.send_feedback({
+                'detected_cameras': self.detections_cameras,
+                'final_rotation': self.angle_robot_goal,
+            })
+        if abs(self.angle_robot_goal) > \
+                self.execute_args['max_angle_error_allowed']:
+            self.angle_to_robot_sign = np.sign(self.angle_robot_goal)
+            print(f'INITIAL: {self.angle_robot_goal}')
+        else:
+            self.jump_center_final = True
+
 
     async def enter_READ_APRILTAGS_FINAL_CORRECTION(self):
         self.start_detections()
@@ -1034,6 +1044,7 @@ class SkillApproachToTags(RayaFSMSkill):
             await self.send_current_error_feedback()
             self.set_state('READ_APRILTAGS_N')
 
+
     async def transition_from_READ_APRILTAGS_N_2(self):
         if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
                 self.is_there_detection:
@@ -1052,7 +1063,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
 
     async def transition_from_CENTER_TO_TARGET(self):
-        if self.final_center_to_target:
+        if not self.motion_running():
             is_motion_ok = False
             try:
                 self.motion.check_last_exception()
@@ -1061,38 +1072,50 @@ class SkillApproachToTags(RayaFSMSkill):
                 await self.motion_obstacle_counter_handler(e)
                 self.set_state('READ_APRILTAGS_N')
             if is_motion_ok:
-                self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
-        start_time = time.time()
+                self.set_state('READ_APRILTAGS_CENTER')
+    
+
+    async def transition_from_READ_APRILTAGS_CENTER(self):
+        if self.is_there_detection:
+            await self.send_current_error_feedback()
+            self.set_state('CENTER_TO_TARGET_FINAL')
+            
+
+    async def transition_from_CENTER_TO_TARGET_FINAL(self):
+        if self.jump_center_final:
+            self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
+            return
+
         self.motion._publish_cmd_vel(0.0, 0.0, self.angle_to_robot_sign*0.011)
         self.start_detections(False)
         while not self.is_there_detection:
             await self.sleep(0.01)
         await self.planning_calculations()
-        print('detection',self.correct_detection)
-        print(f'INITIAL: {self.angle_robot_goal}')
         if self.angle_to_robot_sign == -1:
-            if self.angle_robot_goal >= 0:
+            if self.angle_robot_goal >= -0.1:
                 try:
                     print('Cancel1')
                     self.motion._publish_cmd_vel(0.0, 0.0, 0.00)
-                    self.final_center_to_target = True
+                    self.motion._publish_cmd_vel(0.0, 0.0, 0.00)
+                    await self.sleep(0.01)
+                    self.motion._publish_cmd_vel(0.0, 0.0, 0.00)
+                    self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
                     print('Cancel1_exit')
                 except RayaNotMoving:
                     pass
         else: 
-            if self.angle_robot_goal <= 0:
+            if self.angle_robot_goal <= 0.1:
                 try:
-                    print('Cancel2')
                     self.motion._publish_cmd_vel(0.0, 0.0, 0.00)
-                    self.final_center_to_target = True
-                    print('Cancel2_exit')
+                    self.motion._publish_cmd_vel(0.0, 0.0, 0.00)
+                    await self.sleep(0.01)
+                    self.motion._publish_cmd_vel(0.0, 0.0, 0.00)
+                    self.set_state('READ_APRILTAGS_FINAL_CORRECTION')
                 except RayaNotMoving:
                     pass
-        print('Waiting Future')
-        # await self.set_velocity_future
-        print('Time Lapsed: ', time.time()-start_time)
 
-    
+
+
     async def transition_from_READ_APRILTAGS_FINAL_CORRECTION(self):
         if self.is_there_detection:
             await self.send_current_error_feedback()

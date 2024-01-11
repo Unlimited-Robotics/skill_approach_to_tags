@@ -92,7 +92,7 @@ class RayaApplication(RayaApplicationBase):
         self.max_y_err = self.get_argument('--max-y-err',
                 type=float,
                 help='size of tags to be detected',
-                default=0.05,
+                default=0.02,
             )
         self.max_a_err = self.get_argument('--max-a-err',
                 type=float,
