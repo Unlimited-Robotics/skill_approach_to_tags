@@ -120,6 +120,7 @@ class SkillApproachToTags(RayaFSMSkill):
         self.__predictions_queue = queue.Queue()
         self.scan_done = False
         self.scan = False
+        self.__it_moved = False
         self.motion:MotionController = await self.get_controller('motion')
         self.cv:CVController = await self.get_controller('cv')
         model_params = {
@@ -906,8 +907,10 @@ class SkillApproachToTags(RayaFSMSkill):
                 'detected_cameras': self.detections_cameras,
                 "final_linear": linear_distance,
             })
+        self.__it_moved = False
         if abs(linear_distance) > self.execute_args['max_x_error_allowed']:
             # self.cv.publish_transform('base_link', 'robot_route',[linear_distance,0,0], [0,0,0,1])
+            self.__it_moved = True
             await self.motion.move_linear(
                     distance = linear_distance, 
                     x_velocity = self.execute_args['linear_velocity'],
@@ -1047,7 +1050,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
     async def transition_from_ROTATE_TO_APRILTAGS(self):
         if not self.motion_running():
-                self.set_state('READ_APRILTAGS_N')
+            self.set_state('READ_APRILTAGS_N')
     
 
     async def transition_from_COMPLETE_LINEAR(self):
@@ -1218,7 +1221,9 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             is_motion_ok= False
             try:
-                self.motion.check_last_exception()
+                if self.__it_moved:
+                    self.motion.check_last_exception()
+                    self.__it_moved = False
                 is_motion_ok = True
             except RayaMotionObstacleDetected as e:
                 await self.motion_obstacle_counter_handler(e)
