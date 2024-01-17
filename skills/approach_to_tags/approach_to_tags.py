@@ -1145,7 +1145,8 @@ class SkillApproachToTags(RayaFSMSkill):
     
 
     async def transition_from_READ_APRILTAGS_CENTER(self):
-        if self.is_there_detection:
+        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
+                self.is_there_detection:
             await self.send_current_error_feedback()
             self.set_state('CENTER_TO_TARGET_FINAL')
             
