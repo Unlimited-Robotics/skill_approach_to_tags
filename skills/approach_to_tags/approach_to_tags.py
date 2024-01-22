@@ -13,6 +13,7 @@ from raya.controllers import CVController
 from raya.skills import RayaFSMSkill
 from raya.exceptions import RayaMotionObstacleDetected, RayaNotMoving
 from .constants import *
+from .errors import *
 from raya.enumerations import POSITION_UNIT, ANGLE_UNIT
 
 
@@ -100,15 +101,15 @@ class SkillApproachToTags(RayaFSMSkill):
 
     STATES_TIMEOUTS = {
             'READ_APRILTAG' :      
-                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+                    (NO_TARGET_TIMEOT_STATE, ERROR_NO_TARGET_FOUND),
             'READ_APRILTAG_1' :      
-                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+                    (NO_TARGET_TIMEOT_STATE, ERROR_NO_TARGET_FOUND),
             'READ_APRILTAGS_N' :   
-                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+                    (NO_TARGET_TIMEOT_STATE, ERROR_NO_TARGET_FOUND),
             'READ_APRILTAGS_FINAL_CORRECTION': 
-                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+                    (NO_TARGET_TIMEOT_STATE, ERROR_NO_TARGET_FOUND),
             'READ_APRILTAGS_FINAL': 
-                    (NO_TARGET_TIMEOUT_LONG, ERROR_NO_TARGET_FOUND),
+                    (NO_TARGET_TIMEOT_STATE, ERROR_NO_TARGET_FOUND),
         }
 
     ### SKILL METHODS ###
@@ -934,7 +935,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 self.set_state('INITIAL_REVERSE_ADJUSTMENT')
             else:
                 self.set_state('GO_TO_INTERSECTION')
-        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT:
+        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT:
             if self.rotate_to_find_missing_tag and \
                     self.execute_args['correct_if_only_one_tag']:
                 self.rotate_to_find_missing_tag = False
@@ -948,7 +949,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             if not self.is_there_detection:
                 tag_id= 0 if self.rot_direction else 1
-                error = (ERROR_NOT_TAG_MISSING_FOUND,
+                error = (ERROR_NOT_TAG_FOUND_ROTATE_UNTIL_LOOK_TAGS,
                 'After rotate maximum angle allowed '
                 f'{self.execute_args["scan_angle"]}'
                 f'the tag {[self.execute_args["identifier"][tag_id]]} '
@@ -985,7 +986,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 if self.rotate_to_find_missing_tag:
                     self.set_state('ROTATE_UNTIL_LOOK_TAGS')
                 else:
-                    error = (ERROR_NOT_TAG_MISSING_FOUND,
+                    error = (ERROR_NOT_TAG_FOUND_SCAN_RIGHT,
                     'After scan the tag/s was not found')
                     self.abort(*error) 
         if self.is_there_detection:
@@ -1026,7 +1027,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
 
     async def transition_from_READ_APRILTAG_INTERSECTION(self):
-        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
+        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT or \
                 self.is_there_detection:
             self.stop_detections()
             self.ignore_calculations = not self.is_there_detection
@@ -1038,7 +1039,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
 
     async def transition_from_READ_APRILTAG_2(self):
-        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
+        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT or \
                 self.is_there_detection:
             self.stop_detections()
             if self.is_there_detection:
@@ -1088,7 +1089,7 @@ class SkillApproachToTags(RayaFSMSkill):
             else:
                 self.set_state('STEP_N')
         elif self.rotate_to_find_missing_tag and \
-            (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT and \
+            (time.time()-self.timer1) > NO_TARGET_TIMEOUT and \
             self.execute_args['correct_if_only_one_tag']:
             self.rotate_to_find_missing_tag = False
             self.set_state('ROTATE_UNTIL_LOOK_TAGS_N')
@@ -1098,7 +1099,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             if not self.is_there_detection:
                 tag_id= 0 if self.rot_direction else 1
-                error = (ERROR_NOT_TAG_MISSING_FOUND,
+                error = (ERROR_NOT_TAG_FOUND_ROTATE_UNTIL_LOOK_TAGS_N,
                 'After rotate maximum angle allowed '
                 f'{self.execute_args["scan_angle"]}'
                 f'the tag {[self.execute_args["identifier"][tag_id]]} '
@@ -1115,7 +1116,7 @@ class SkillApproachToTags(RayaFSMSkill):
 
 
     async def transition_from_READ_APRILTAGS_N_2(self):
-        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
+        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT or \
                 self.is_there_detection:
             self.stop_detections()
             if self.is_there_detection:
@@ -1145,13 +1146,13 @@ class SkillApproachToTags(RayaFSMSkill):
     
 
     async def transition_from_READ_APRILTAGS_CENTER(self):
-        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT or \
+        if (time.time()-self.timer1) > NO_TARGET_TIMEOUT or \
                 self.is_there_detection:
             if self.is_there_detection:
                 await self.send_current_error_feedback()
                 self.set_state('CENTER_TO_TARGET_FINAL')
             else:
-                error = (ERROR_NOT_TAG_MISSING_FOUND,
+                error = (ERROR_NOT_TAG_FOUND_READ_APRILTAGS_CENTER,
                 'Error detecting tags after CENTER_TO_TARGET')
                 self.abort(*error)                
             
@@ -1197,7 +1198,7 @@ class SkillApproachToTags(RayaFSMSkill):
             self.set_state('MOVE_LINEAR_FINAL')
 
         elif self.rotate_to_find_missing_tag and \
-            (time.time()-self.timer1) > NO_TARGET_TIMEOUT_SHORT and \
+            (time.time()-self.timer1) > NO_TARGET_TIMEOUT and \
             self.execute_args['correct_if_only_one_tag']:
             self.rotate_to_find_missing_tag = False
             self.set_state('ROTATE_UNTIL_LOOK_TAGS_FINAL')
@@ -1207,7 +1208,7 @@ class SkillApproachToTags(RayaFSMSkill):
         if not self.motion_running():
             if not self.is_there_detection:
                 tag_id= 0 if self.rot_direction else 1
-                error = (ERROR_NOT_TAG_MISSING_FOUND,
+                error = (ERROR_NOT_TAG_FOUND__ROTATE_UNTIL_LOOK_TAGS_FINAL,
                 'After rotate maximum angle allowed '
                 f'{self.execute_args["scan_angle"]}'
                 f'the tag {[self.execute_args["identifier"][tag_id]]} '
