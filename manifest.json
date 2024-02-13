@@ -2,7 +2,7 @@
     "name": "approach_to_tags",
     "description": "",
     "type": "skill",
-    "version" : "2.1.0.dev",
+    "version" : "2.1.1.dev",
     "dependencies" : {
         "pip": [],
         "skills": []
