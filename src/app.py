@@ -16,6 +16,7 @@ class RayaApplication(RayaApplicationBase):
                 setup_args={
                         'working_cameras': self.cameras,
                         'tags_size': self.tags_size,
+                        'model_name': self.model
                     },
             )
 
@@ -76,6 +77,12 @@ class RayaApplication(RayaApplicationBase):
                 default='',
                 help='ids of the apriltags to be used'
             )  
+        self.model = self.get_argument('--model', 
+                type=str, 
+                required=False,
+                default='apriltags',
+                help='model name to use'
+            )
         self.save_trajectory = self.get_flag_argument('--save-trajectory',
                 help='Enable saving trajectory',
             )
@@ -118,7 +125,8 @@ class RayaApplication(RayaApplicationBase):
             '--y-offset',
             type= float,
             help='Offset in y axis',
-            default=0.0)           
+            default=0.0)  
+         
         try:
             self.identifier = literal_eval(self.identifier)
         except:

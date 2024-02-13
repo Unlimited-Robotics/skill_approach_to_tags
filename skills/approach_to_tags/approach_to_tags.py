@@ -24,6 +24,7 @@ class SkillApproachToTags(RayaFSMSkill):
     REQUIRED_SETUP_ARGS = [
             'working_cameras',
             'tags_size',
+            'model_name'
         ]
 
     DEFAULT_SETUP_ARGS = {
@@ -128,7 +129,7 @@ class SkillApproachToTags(RayaFSMSkill):
                 'families' : 'tag36h11',
                 'nthreads' : 4,
                 'quad_decimate' : 2.0,
-                'quad_sigma': 0.8,
+                'quad_sigma': 0.0,
                 'decode_sharpening' : 0.25,
                 'refine_edges' : 1,
                 'tag_size' : self.setup_args['tags_size'],
@@ -136,7 +137,7 @@ class SkillApproachToTags(RayaFSMSkill):
         self.predictors={}
         for camera in self.setup_args['working_cameras']:
             self.predictors[camera] = await self.cv.enable_model(
-                    name='apriltags', 
+                    name=self.setup_args['model_name'], 
                     source=camera,
                     model_params = model_params
                 )
